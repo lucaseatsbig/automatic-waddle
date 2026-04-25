@@ -1,0 +1,29 @@
+{
+  "name": "lucaseats",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "deploy": "astro build && wrangler deploy --config dist/server/wrangler.json",
+    "db:migrate:local": "wrangler d1 migrations apply lucaseats-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply lucaseats-db --remote",
+    "db:query:local": "wrangler d1 execute lucaseats-db --local --command",
+    "db:query:remote": "wrangler d1 execute lucaseats-db --remote --command",
+    "db:import:notion": "node scripts/import-notion.mjs",
+    "db:import:apply:local": "wrangler d1 execute lucaseats-db --local --file=scripts/notion-import.sql",
+    "db:import:apply:remote": "wrangler d1 execute lucaseats-db --remote --file=scripts/notion-import.sql",
+    "astro": "astro"
+  },
+  "dependencies": {
+  "@astrojs/cloudflare": "^13.0.0",
+  "astro": "^6.0.0"
+},
+  "devDependencies": {
+  "@cloudflare/workers-types": "^4.20250101.0",
+  "typescript": "^5.6.0",
+  "wrangler": "^4.0.0"
+}
+}

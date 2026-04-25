@@ -1,0 +1,12 @@
+name = "lucaseatsbig"
+compatibility_date = "2026-04-24"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lucaseats-db"
+database_id = "e71c80ba-a90b-4ac5-b474-f49a4fac372d"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "lucaseats-photos"

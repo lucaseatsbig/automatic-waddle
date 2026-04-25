@@ -1,0 +1,193 @@
+---
+import type { Filters, Location, Tag } from '../lib/types';
+
+interface Props {
+  filters: Filters;
+  locations: Location[];
+  tags: Tag[];
+  cuisines: string[];
+}
+const { filters, locations, tags, cuisines } = Astro.props;
+
+const vibes = tags.filter((t) => t.category === 'vibe');
+const dietary = tags.filter((t) => t.category === 'dietary');
+const meals = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks'] as const;
+
+const isOn = (arr: string[] | undefined, v: string) => (arr ?? []).includes(v);
+---
+<form class="filter-bar" method="get" action="/">
+  <div class="row row-top">
+    <input
+      type="search"
+      name="q"
+      placeholder="Search name or standout dish…"
+      value={filters.q ?? ''}
+    />
+    <select name="cuisine" aria-label="Cuisine">
+      <option value="">All cuisines</option>
+      {cuisines.map((c) => (
+        <option value={c} selected={filters.cuisine === c}>{c}</option>
+      ))}
+    </select>
+    <select name="location" aria-label="Location">
+      <option value="">All locations</option>
+      {locations.map((l) => (
+        <option value={l.slug} selected={filters.location === l.slug}>{l.name}</option>
+      ))}
+    </select>
+    <select name="meal" aria-label="Meal type">
+      <option value="">Any meal</option>
+      {meals.map((m) => (
+        <option value={m} selected={filters.meal === m}>
+          {m[0].toUpperCase() + m.slice(1)}
+        </option>
+      ))}
+    </select>
+    <select name="visited" aria-label="Visited">
+      <option value="">Visited & wishlist</option>
+      <option value="yes" selected={filters.visited === 'yes'}>Visited only</option>
+      <option value="no" selected={filters.visited === 'no'}>Wishlist only</option>
+    </select>
+  </div>
+
+  <fieldset class="chips-group">
+    <legend>Price</legend>
+    <div class="chips">
+      {[1, 2, 3, 4, 5].map((p) => (
+        <label class={`chip ${(filters.price ?? []).includes(p) ? 'on' : ''}`}>
+          <input type="checkbox" name="price" value={p} checked={(filters.price ?? []).includes(p)} />
+          {'$'.repeat(p)}
+        </label>
+      ))}
+    </div>
+  </fieldset>
+
+  {vibes.length > 0 && (
+    <fieldset class="chips-group">
+      <legend>Vibes</legend>
+      <div class="chips">
+        {vibes.map((t) => (
+          <label class={`chip ${isOn(filters.vibes, t.slug) ? 'on' : ''}`}>
+            <input type="checkbox" name="vibes" value={t.slug} checked={isOn(filters.vibes, t.slug)} />
+            {t.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )}
+
+  {dietary.length > 0 && (
+    <fieldset class="chips-group">
+      <legend>Dietary</legend>
+      <div class="chips">
+        {dietary.map((t) => (
+          <label class={`chip ${isOn(filters.dietary, t.slug) ? 'on' : ''}`}>
+            <input type="checkbox" name="dietary" value={t.slug} checked={isOn(filters.dietary, t.slug)} />
+            {t.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )}
+
+  <div class="row row-actions">
+    <a href="/" class="reset">Clear all</a>
+    <button type="submit">Apply filters</button>
+  </div>
+</form>
+
+<script>
+  // Keep chip visual state in sync when a checkbox toggles.
+  document.querySelectorAll<HTMLInputElement>('.filter-bar .chip input').forEach((el) => {
+    el.addEventListener('change', () => {
+      el.closest('.chip')?.classList.toggle('on', el.checked);
+    });
+  });
+</script>
+
+<style>
+  .filter-bar {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+  }
+  .row input[type='search'],
+  .row select {
+    padding: 0.55rem 0.8rem;
+    border: 1px solid #d8d3c4;
+    border-radius: 8px;
+    background: white;
+    font-size: 0.9rem;
+  }
+  .row input[type='search'] {
+    flex: 1 1 260px;
+    min-width: 220px;
+  }
+  .chips-group {
+    border: none;
+    padding: 0;
+    margin: 0;
+  }
+  .chips-group legend {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8a7f6a;
+    margin-bottom: 0.45rem;
+    padding: 0;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid #d8d3c4;
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.85rem;
+    user-select: none;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+  }
+  .chip:hover { border-color: #a89a7a; }
+  .chip.on {
+    background: #2a2a2a;
+    color: white;
+    border-color: #2a2a2a;
+  }
+  .chip input { display: none; }
+  .row-actions {
+    justify-content: flex-end;
+    padding-top: 0.25rem;
+  }
+  button[type='submit'] {
+    padding: 0.6rem 1.3rem;
+    background: #2a2a2a;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  button[type='submit']:hover { background: #000; }
+  .reset {
+    color: #666;
+    text-decoration: none;
+    font-size: 0.9rem;
+    padding: 0.6rem 0.8rem;
+  }
+  .reset:hover { color: #000; text-decoration: underline; }
+</style>

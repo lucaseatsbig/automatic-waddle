@@ -1,0 +1,152 @@
+---
+interface Props {
+  title: string;
+  crumbs?: { href: string; label: string }[];
+}
+const { title, crumbs = [] } = Astro.props;
+---
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>{title}</title>
+    <style is:global>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: #222;
+        background: #f5f3ee;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: #2a5aa3; }
+      img { max-width: 100%; display: block; }
+      button, input, select, textarea { font: inherit; }
+      input[type='text'], input[type='date'], input[type='number'],
+      input[type='url'], input[type='search'], select, textarea {
+        padding: 0.65rem 0.8rem;
+        border: 1px solid #d8d3c4;
+        border-radius: 8px;
+        background: white;
+        width: 100%;
+        font-size: 1rem;
+      }
+      textarea { min-height: 5rem; resize: vertical; }
+      label.field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        font-size: 0.85rem;
+        color: #555;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.55rem 1rem;
+        border: 1px solid #d8d3c4;
+        border-radius: 8px;
+        background: white;
+        cursor: pointer;
+        font-size: 0.9rem;
+        text-decoration: none;
+        color: inherit;
+      }
+      .btn:hover { border-color: #a89a7a; }
+      .btn.primary { background: #2a2a2a; color: white; border-color: #2a2a2a; }
+      .btn.primary:hover { background: #000; }
+      .btn.danger { background: #fff5f5; color: #c53030; border-color: #f5c5c5; }
+      .btn.danger:hover { background: #ffe5e5; }
+    </style>
+  </head>
+  <body>
+    <header class="adm-header">
+      <div class="bar">
+        <a href="/admin" class="brand">Admin</a>
+        <nav class="nav">
+          <a href="/" target="_blank" rel="noopener">View site ↗</a>
+          <form method="post" action="/api/admin/logout" class="logout-form">
+            <button type="submit" class="link-btn">Sign out</button>
+          </form>
+        </nav>
+      </div>
+      {crumbs.length > 0 && (
+        <nav class="crumbs">
+          <a href="/admin">Admin</a>
+          {crumbs.map((c) => (
+            <>
+              <span class="sep">/</span>
+              <a href={c.href}>{c.label}</a>
+            </>
+          ))}
+          <span class="sep">/</span>
+          <span class="here">{title}</span>
+        </nav>
+      )}
+    </header>
+    <main class="adm-main">
+      <slot />
+    </main>
+
+    <style>
+      .adm-header {
+        background: #2a2a2a;
+        color: white;
+      }
+      .bar {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0.9rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .brand {
+        color: white;
+        text-decoration: none;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .nav {
+        display: flex;
+        gap: 1.25rem;
+        align-items: center;
+        font-size: 0.9rem;
+      }
+      .nav a { color: #eee; text-decoration: none; }
+      .nav a:hover { text-decoration: underline; }
+      .logout-form { margin: 0; }
+      .link-btn {
+        background: none;
+        border: none;
+        color: #eee;
+        cursor: pointer;
+        padding: 0;
+        font-size: 0.9rem;
+      }
+      .link-btn:hover { text-decoration: underline; }
+      .crumbs {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0.5rem 1rem 0.75rem;
+        font-size: 0.85rem;
+        color: #bbb;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        align-items: center;
+      }
+      .crumbs a { color: #bbb; text-decoration: none; }
+      .crumbs a:hover { color: white; text-decoration: underline; }
+      .crumbs .sep { color: #666; }
+      .crumbs .here { color: white; }
+      .adm-main {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 4rem;
+      }
+    </style>
+  </body>
+</html>

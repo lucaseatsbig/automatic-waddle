@@ -1,0 +1,214 @@
+---
+import type { ReviewEditData } from '../../lib/types';
+import RatingSelect from './RatingSelect.astro';
+
+interface Props {
+  review?: ReviewEditData;
+  action: string;
+}
+const { review, action } = Astro.props;
+const r = review;
+const items = r?.standout_items ?? [];
+
+const meals = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks'] as const;
+---
+
+<form method="post" action={action} class="rv-form">
+  <div class="grid">
+    <label class="field">
+      <span>Visit date</span>
+      <input type="date" name="visit_date" value={r?.visit_date ?? ''} />
+    </label>
+
+    <label class="field">
+      <span>Meal</span>
+      <select name="meal_type">
+        <option value="">—</option>
+        {meals.map((m) => (
+          <option value={m} selected={r?.meal_type === m}>
+            {m[0].toUpperCase() + m.slice(1)}
+          </option>
+        ))}
+      </select>
+    </label>
+  </div>
+
+  <fieldset class="ratings">
+    <legend>Ratings (0–10, in steps of 0.5)</legend>
+    <div class="ratings-grid">
+      <RatingSelect name="rating_overall" label="Overall" value={r?.rating_overall ?? null} required />
+      <RatingSelect name="rating_food"    label="Food"    value={r?.rating_food    ?? null} />
+      <RatingSelect name="rating_vibe"    label="Vibe"    value={r?.rating_vibe    ?? null} />
+      <RatingSelect name="rating_service" label="Service" value={r?.rating_service ?? null} />
+      <RatingSelect name="rating_value"   label="Value"   value={r?.rating_value   ?? null} />
+      <RatingSelect name="rating_size"    label="Size"    value={r?.rating_size    ?? null} />
+    </div>
+    <p class="hint">Size is relative to the category (burger vs other burgers). 10 = hard to finish, 1 = barely a snack.</p>
+  </fieldset>
+
+  <label class="field">
+    <span>Commentary</span>
+    <textarea name="commentary" rows="5" placeholder="What stood out, how it felt, who it's for…">{r?.commentary ?? ''}</textarea>
+  </label>
+
+  <div class="grid">
+    <fieldset class="yn">
+      <legend>Would return?</legend>
+      <label class="radio">
+        <input type="radio" name="would_return" value="1" checked={r ? r.would_return : true} />
+        <span>Yes</span>
+      </label>
+      <label class="radio">
+        <input type="radio" name="would_return" value="0" checked={r ? !r.would_return : false} />
+        <span>No</span>
+      </label>
+    </fieldset>
+
+    <label class="field">
+      <span>Instagram post (optional)</span>
+      <input type="url" name="instagram_url" value={r?.instagram_url ?? ''} placeholder="https://instagram.com/p/…" />
+    </label>
+  </div>
+
+  <fieldset class="standout">
+    <legend>Menu items</legend>
+    <p class="hint">Star the ones that were standouts. Leave blank rows — they're ignored.</p>
+    <div class="items" id="items">
+      {(items.length > 0 ? items : [{ name: '', note: '', is_standout: false }]).map((it) => (
+        <div class="item">
+          <label class="star">
+            <input type="checkbox" name="standout_star" value="1" checked={('is_standout' in it) ? it.is_standout : false} />
+            <span aria-hidden="true">★</span>
+          </label>
+          <input type="text" name="standout_name" placeholder="Dish name" value={it.name ?? ''} />
+          <input type="text" name="standout_note" placeholder="Note (optional)" value={('note' in it) ? (it.note ?? '') : ''} />
+        </div>
+      ))}
+    </div>
+    <button type="button" class="btn" id="add-item">+ Add item</button>
+  </fieldset>
+
+  <fieldset class="status">
+    <legend>Status</legend>
+    <label class="radio">
+      <input type="radio" name="status" value="published" checked={r ? r.status === 'published' : true} />
+      <span>Published (visible on site)</span>
+    </label>
+    <label class="radio">
+      <input type="radio" name="status" value="draft" checked={r?.status === 'draft'} />
+      <span>Draft (only you can see)</span>
+    </label>
+  </fieldset>
+
+  <div class="actions">
+    <a href={r ? `/admin/restaurants/${r.restaurant_id}` : '/admin'} class="btn">Cancel</a>
+    <button type="submit" class="btn primary">{r ? 'Save changes' : 'Save review'}</button>
+  </div>
+</form>
+
+<script>
+  const items = document.getElementById('items');
+  const addBtn = document.getElementById('add-item');
+  addBtn?.addEventListener('click', () => {
+    if (!items) return;
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = `
+      <label class="star">
+        <input type="checkbox" name="standout_star" value="1" />
+        <span aria-hidden="true">★</span>
+      </label>
+      <input type="text" name="standout_name" placeholder="Dish name" />
+      <input type="text" name="standout_note" placeholder="Note (optional)" />
+    `;
+    items.appendChild(row);
+    row.querySelector<HTMLInputElement>('input[name="standout_name"]')?.focus();
+  });
+
+  document.addEventListener('change', (e) => {
+    const el = e.target as HTMLInputElement;
+    if (el && el.name === 'standout_star') {
+      el.closest('.star')?.classList.toggle('on', el.checked);
+    }
+  });
+  // Set initial state
+  document.querySelectorAll<HTMLInputElement>('input[name="standout_star"]').forEach((el) => {
+    el.closest('.star')?.classList.toggle('on', el.checked);
+  });
+</script>
+
+<style>
+  .rv-form {
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem;
+  }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+
+  fieldset { border: none; padding: 0; margin: 0; }
+  legend {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8a7f6a;
+    margin-bottom: 0.5rem;
+    padding: 0;
+  }
+  .hint { color: #999; font-size: 0.8rem; margin: 0.5rem 0 0; }
+
+  .ratings-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+  }
+  @media (max-width: 600px) { .ratings-grid { grid-template-columns: repeat(2, 1fr); } }
+  .rating-field input { text-align: center; }
+
+  .yn, .status { display: flex; flex-direction: column; gap: 0.4rem; }
+  .radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.9rem;
+    border: 1px solid #d8d3c4;
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.9rem;
+    width: fit-content;
+  }
+  .radio input { accent-color: #2a2a2a; }
+  .yn { flex-direction: row; }
+
+  .items { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.6rem; }
+  .item {
+    display: grid;
+    grid-template-columns: 2.25rem 1fr 1fr;
+    gap: 0.4rem;
+    align-items: stretch;
+  }
+  @media (max-width: 600px) { .item { grid-template-columns: 2.25rem 1fr; } .item input[name="standout_note"] { grid-column: 2; } }
+  .item input { padding: 0.5rem 0.65rem; }
+  .star {
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid #d8d3c4; border-radius: 8px; background: white;
+    cursor: pointer; user-select: none;
+    color: #ccc; font-size: 1.2rem;
+  }
+  .star input { display: none; }
+  .star.on { color: #f2a00c; background: #fffbeb; border-color: #f4d38a; }
+
+  .actions {
+    display: flex; gap: 0.75rem; justify-content: flex-end;
+    border-top: 1px solid #eee; padding-top: 1rem;
+  }
+</style>

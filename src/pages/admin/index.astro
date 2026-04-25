@@ -1,0 +1,219 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { adminListRestaurants } from '../../lib/db';
+
+const restaurants = await adminListRestaurants(env.DB);
+
+const cuisineOptions = [...new Set(restaurants.map((r) => r.cuisine).filter((c): c is string => !!c))].sort();
+const suburbOptions = [...new Set(restaurants.map((r) => r.location).filter((l): l is string => !!l))].sort();
+---
+<AdminLayout title="Dashboard">
+  <section class="page-head">
+    <h1>Restaurants</h1>
+    <a href="/admin/entry/new" class="btn primary">+ New entry</a>
+  </section>
+
+  {restaurants.length === 0 ? (
+    <p class="empty">No restaurants yet. Add your first one.</p>
+  ) : (
+    <>
+      <section class="filters" id="filters">
+        <input type="search" id="filter-q" placeholder="Search name, cuisine, suburb…" />
+        <div class="status">
+          <label><input type="radio" name="filter-status" value="any" checked /> All</label>
+          <label><input type="radio" name="filter-status" value="1" /> Visited</label>
+          <label><input type="radio" name="filter-status" value="0" /> Wishlist</label>
+        </div>
+        <select id="filter-cuisine">
+          <option value="">All cuisines</option>
+          {cuisineOptions.map((c) => <option value={c.toLowerCase()}>{c}</option>)}
+        </select>
+        <select id="filter-suburb">
+          <option value="">All suburbs</option>
+          {suburbOptions.map((s) => <option value={s.toLowerCase()}>{s}</option>)}
+        </select>
+        <p class="count" id="filter-count">Showing {restaurants.length} of {restaurants.length}</p>
+      </section>
+
+      <ul class="list">
+        {restaurants.map((r) => (
+          <li
+            class="row"
+            data-name={r.name.toLowerCase()}
+            data-cuisine={(r.cuisine ?? '').toLowerCase()}
+            data-location={(r.location ?? '').toLowerCase()}
+            data-visited={r.review_count > 0 ? '1' : '0'}
+          >
+            <a href={`/admin/restaurants/${r.id}`} class="row-link">
+              <span class="name">{r.name}</span>
+              <span class="meta">
+                {r.cuisine ?? 'Cuisine —'}
+                {r.location && <span> · {r.location}</span>}
+                {r.price_tier && <span> · {'$'.repeat(r.price_tier)}</span>}
+              </span>
+              <span class="counts">
+                {r.review_count === 0
+                  ? <span class="tag tag-wish">Wishlist</span>
+                  : (
+                    <>
+                      <span>{r.published_count} published</span>
+                      {r.draft_count > 0 && <span class="tag tag-draft">· {r.draft_count} draft</span>}
+                      {r.latest_visit_date && <span class="muted"> · last {r.latest_visit_date}</span>}
+                    </>
+                  )
+                }
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+</AdminLayout>
+
+<script is:inline>
+  const rows = Array.from(document.querySelectorAll('.row'));
+  const q = document.getElementById('filter-q');
+  const statusInputs = document.querySelectorAll('input[name="filter-status"]');
+  const cuisine = document.getElementById('filter-cuisine');
+  const suburb = document.getElementById('filter-suburb');
+  const countEl = document.getElementById('filter-count');
+
+  if (q && cuisine && suburb && countEl && statusInputs.length > 0) {
+    function apply() {
+      const qv = q.value.trim().toLowerCase();
+      const sv = document.querySelector('input[name="filter-status"]:checked')?.value ?? 'any';
+      const cv = cuisine.value;
+      const lv = suburb.value;
+      let shown = 0;
+      for (const row of rows) {
+        const hay = `${row.dataset.name} ${row.dataset.cuisine} ${row.dataset.location}`;
+        const ok =
+          (!qv || hay.includes(qv)) &&
+          (sv === 'any' || row.dataset.visited === sv) &&
+          (!cv || row.dataset.cuisine === cv) &&
+          (!lv || row.dataset.location === lv);
+        row.classList.toggle('hidden', !ok);
+        if (ok) shown++;
+      }
+      countEl.textContent = `Showing ${shown} of ${rows.length}`;
+    }
+    [q, cuisine, suburb].forEach((el) => el.addEventListener('input', apply));
+    statusInputs.forEach((el) => el.addEventListener('change', apply));
+    apply();
+  }
+</script>
+
+<style>
+  .page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+  }
+  h1 { margin: 0; font-size: 1.5rem; }
+  .empty {
+    text-align: center;
+    color: #888;
+    padding: 3rem 0;
+  }
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+  .filters input[type='search'] { flex: 1 1 220px; min-width: 0; }
+  .filters select { flex: 0 1 auto; }
+  .filters .status {
+    display: flex;
+    gap: 0.6rem;
+    font-size: 0.85rem;
+    color: #555;
+    align-items: center;
+  }
+  .filters .status label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    cursor: pointer;
+  }
+  .count {
+    flex-basis: 100%;
+    margin: 0;
+    color: #888;
+    font-size: 0.8rem;
+  }
+  @media (max-width: 600px) {
+    .filters { flex-direction: column; align-items: stretch; }
+    .filters input[type='search'], .filters select { width: 100%; }
+  }
+  .list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.5rem;
+  }
+  .row {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    min-width: 0;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+  }
+  .row:hover { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
+  .row.hidden { display: none; }
+  .row-link {
+    display: block;
+    padding: 0.5rem 0.7rem;
+    text-decoration: none;
+    color: inherit;
+    min-width: 0;
+  }
+  .name {
+    font-weight: 600;
+    color: #222;
+    font-size: 0.9rem;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .row:hover .name { color: #2a5aa3; }
+  .meta {
+    color: #777;
+    font-size: 0.75rem;
+    margin-top: 0.1rem;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .counts {
+    color: #555;
+    font-size: 0.7rem;
+    margin-top: 0.2rem;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .muted { color: #888; }
+  .tag {
+    padding: 0.05rem 0.35rem;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .tag-wish { background: #fdf3d3; color: #8a6d0f; }
+  .tag-draft { background: #e8f0ff; color: #2a5aa3; }
+</style>

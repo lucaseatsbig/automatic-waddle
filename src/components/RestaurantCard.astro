@@ -1,0 +1,142 @@
+---
+import type { RestaurantCardData } from '../lib/types';
+
+interface Props {
+  restaurant: RestaurantCardData;
+  photosBase: string;
+}
+const { restaurant: r, photosBase } = Astro.props;
+
+const priceSymbol = r.price_tier ? '$'.repeat(r.price_tier) : '';
+const coverUrl = r.cover_r2_key && photosBase
+  ? `${photosBase}/${r.cover_r2_key}`
+  : null;
+const ratingFmt = r.avg_overall != null ? r.avg_overall.toFixed(1) : null;
+---
+<a href={`/restaurants/${r.slug}`} class={`card ${r.visited ? '' : 'wishlist'}`}>
+  <div class="photo">
+    {coverUrl
+      ? <img src={coverUrl} alt="" loading="lazy" />
+      : <div class="placeholder">{r.visited ? 'No photo yet' : 'Wishlist'}</div>}
+    {ratingFmt && <span class="rating">{ratingFmt}</span>}
+  </div>
+  <div class="body">
+    <h3>{r.name}</h3>
+    <p class="meta">
+      {r.cuisine && <span>{r.cuisine}</span>}
+      {r.location && <span class="dot">·</span>}
+      {r.location && <span>{r.location}</span>}
+      {priceSymbol && <span class="dot">·</span>}
+      {priceSymbol && <span class="price">{priceSymbol}</span>}
+    </p>
+    {r.visited ? (
+      <p class="sub">
+        Last visit {r.latest_visit_date}
+        {r.review_count > 1 && <span class="visits"> · {r.review_count} visits</span>}
+      </p>
+    ) : r.wishlist_note ? (
+      <p class="sub wishlist-note">{r.wishlist_note}</p>
+    ) : (
+      <p class="sub wishlist-note">Haven't been yet.</p>
+    )}
+    {r.tags.length > 0 && (
+      <div class="chips">
+        {r.tags.slice(0, 4).map((t) => (
+          <span class={`chip chip-${t.category}`}>{t.label}</span>
+        ))}
+      </div>
+    )}
+  </div>
+</a>
+
+<style>
+  .card {
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  }
+  .card.wishlist {
+    border: 1px dashed #d0c8b8;
+    background: #fdfcf7;
+  }
+
+  .photo {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    background: #efece4;
+  }
+  .photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #a8a08a;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .rating {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    background: rgba(0, 0, 0, 0.82);
+    color: white;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .body { padding: 0.9rem 1rem 1rem; }
+  h3 { margin: 0; font-size: 1.05rem; line-height: 1.3; }
+  .meta {
+    color: #777;
+    font-size: 0.85rem;
+    margin: 0.35rem 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+  .dot { color: #bbb; }
+  .price { font-weight: 600; color: #555; }
+  .sub {
+    color: #555;
+    font-size: 0.85rem;
+    margin: 0.5rem 0 0;
+  }
+  .wishlist-note {
+    font-style: italic;
+    color: #7a6f55;
+  }
+  .visits { color: #888; }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.65rem;
+  }
+  .chip {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: #f0ede6;
+    color: #555;
+  }
+  .chip-vibe    { background: #e8f0ff; color: #2a5aa3; }
+  .chip-dietary { background: #e8f5e9; color: #2e7d3e; }
+</style>

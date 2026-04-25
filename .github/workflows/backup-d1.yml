@@ -1,0 +1,48 @@
+name: Backup D1
+
+on:
+  schedule:
+    # Sundays at 16:00 UTC (Monday 02:00 Sydney time-ish, before peak use)
+    - cron: '0 16 * * 0'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Export D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          mkdir -p backups
+          DATE=$(date -u +%Y-%m-%d)
+          npx wrangler d1 export lucaseats-db --remote --output="backups/${DATE}.sql"
+
+      - name: Prune backups older than 12 weeks
+        run: |
+          find backups -name '*.sql' -mtime +84 -delete || true
+
+      - name: Commit + push if changed
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add backups/
+          if git diff --staged --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git commit -m "chore(backup): D1 dump $(date -u +%Y-%m-%d)"
+          git push

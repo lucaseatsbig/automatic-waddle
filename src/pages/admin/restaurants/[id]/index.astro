@@ -1,0 +1,117 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import RestaurantForm from '../../../../components/admin/RestaurantForm.astro';
+import {
+  getCuisineSuggestions,
+  getLocations,
+  getReviewsForRestaurant,
+  getRestaurantForEdit,
+  getTags,
+} from '../../../../lib/db';
+
+const idNum = Number(Astro.params.id);
+if (!Number.isFinite(idNum)) return Astro.redirect('/admin');
+
+const restaurant = await getRestaurantForEdit(env.DB, idNum);
+if (!restaurant) return Astro.redirect('/admin');
+
+const [locations, tags, cuisines, reviews] = await Promise.all([
+  getLocations(env.DB),
+  getTags(env.DB),
+  getCuisineSuggestions(env.DB),
+  getReviewsForRestaurant(env.DB, idNum),
+]);
+---
+<AdminLayout title={restaurant.name} crumbs={[]}>
+  <section class="page-head">
+    <h1>{restaurant.name}</h1>
+    <a href={`/admin/entry/new?name=${encodeURIComponent(restaurant.name)}`} class="btn primary">+ New review</a>
+  </section>
+
+  <RestaurantForm
+    restaurant={restaurant}
+    locations={locations}
+    tags={tags}
+    cuisines={cuisines}
+    action={`/api/admin/restaurants/${restaurant.id}`}
+  />
+
+  <h2>Reviews</h2>
+  {reviews.length === 0 ? (
+    <p class="empty">No reviews yet. This restaurant is on your wishlist.</p>
+  ) : (
+    <ul class="reviews">
+      {reviews.map((rv) => (
+        <li class="review">
+          <a href={`/admin/reviews/${rv.id}`} class="review-link">
+            <div>
+              <strong>{rv.visit_date ?? 'Undated'}</strong>
+              {rv.meal_type && <span class="meal"> · {rv.meal_type}</span>}
+              <span class={`status status-${rv.status}`}>{rv.status}</span>
+            </div>
+            <div class="rating">{rv.rating_overall.toFixed(1)}</div>
+          </a>
+        </li>
+      ))}
+    </ul>
+  )}
+
+  <section class="danger-zone">
+    <h2>Danger zone</h2>
+    <form method="post" action={`/api/admin/restaurants/${restaurant.id}/delete`} onsubmit="return confirm('Delete this restaurant and ALL its reviews and photos? This cannot be undone.')">
+      <button type="submit" class="btn danger">Delete restaurant</button>
+    </form>
+  </section>
+</AdminLayout>
+
+<style>
+  .page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  h1 { margin: 0; font-size: 1.5rem; }
+  h2 {
+    font-size: 1.1rem;
+    margin: 2rem 0 0.75rem;
+    color: #555;
+  }
+  .empty { color: #888; padding: 1rem 0; }
+  .reviews { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+  .review-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    padding: 0.8rem 1rem;
+    border-radius: 10px;
+    text-decoration: none;
+    color: inherit;
+    gap: 1rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+  .review-link:hover { background: #fafafa; }
+  .meal { color: #777; font-size: 0.9rem; }
+  .status {
+    margin-left: 0.6rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    letter-spacing: 0.06em;
+  }
+  .status-published { background: #e8f5e9; color: #2e7d3e; }
+  .status-draft     { background: #fdf3d3; color: #8a6d0f; }
+  .rating { font-weight: 700; font-size: 1.1rem; }
+  .danger-zone {
+    margin-top: 3rem;
+    padding: 1rem 1.25rem;
+    border: 1px dashed #f5c5c5;
+    border-radius: 10px;
+    background: #fff9f9;
+  }
+  .danger-zone h2 { margin-top: 0; color: #c53030; }
+</style>

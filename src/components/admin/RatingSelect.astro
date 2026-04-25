@@ -1,0 +1,32 @@
+---
+interface Props {
+  name: string;
+  label: string;
+  value?: number | null;
+  required?: boolean;
+}
+const { name, label, value, required = false } = Astro.props;
+
+// 10.0 down to 0.0 in 0.5 steps
+const options: number[] = [];
+for (let v = 10; v >= 0; v -= 0.5) options.push(v);
+const selected = value == null ? '' : String(value);
+---
+<label class="field rating">
+  <span>{label}{required && ' *'}</span>
+  <select name={name} required={required} class="rating-select">
+    {!required && <option value="">—</option>}
+    {options.map((v) => (
+      <option value={v} selected={selected === String(v)}>{v.toFixed(1)}</option>
+    ))}
+  </select>
+</label>
+
+<style>
+  .rating { min-width: 0; }
+  .rating-select {
+    width: 100%;
+    text-align: center;
+    text-align-last: center;
+  }
+</style>

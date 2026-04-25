@@ -1,0 +1,51 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import ReviewForm from '../../../components/admin/ReviewForm.astro';
+import PhotoManager from '../../../components/admin/PhotoManager.astro';
+import { getReviewForEdit } from '../../../lib/db';
+
+const idNum = Number(Astro.params.id);
+if (!Number.isFinite(idNum)) return Astro.redirect('/admin');
+
+const review = await getReviewForEdit(env.DB, idNum);
+if (!review) return Astro.redirect('/admin');
+
+const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
+---
+<AdminLayout
+  title={`Review — ${review.restaurant_name}`}
+  crumbs={[
+    { href: `/admin/restaurants/${review.restaurant_id}`, label: review.restaurant_name },
+  ]}
+>
+  <h1>
+    Review — <span class="sub">{review.restaurant_name}</span>
+  </h1>
+
+  <ReviewForm review={review} action={`/api/admin/reviews/${review.id}`} />
+
+  <h2>Photos</h2>
+  <PhotoManager review={review} photosBase={photosBase} />
+
+  <section class="danger-zone">
+    <h2>Danger zone</h2>
+    <form method="post" action={`/api/admin/reviews/${review.id}/delete`} onsubmit="return confirm('Delete this review and its photos? This cannot be undone.')">
+      <button type="submit" class="btn danger">Delete review</button>
+    </form>
+  </section>
+</AdminLayout>
+
+<style>
+  h1 { margin: 0 0 1.5rem; font-size: 1.4rem; }
+  h2 { margin: 2rem 0 0.75rem; font-size: 1.1rem; color: #555; }
+  .sub { color: #777; font-weight: 400; }
+  .danger-zone {
+    margin-top: 3rem;
+    padding: 1rem 1.25rem;
+    border: 1px dashed #f5c5c5;
+    border-radius: 10px;
+    background: #fff9f9;
+  }
+  .danger-zone h2 { margin-top: 0; color: #c53030; }
+</style>

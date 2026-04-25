@@ -1,0 +1,688 @@
+---
+import type { Location, Tag } from '../../lib/types';
+import RatingSelect from './RatingSelect.astro';
+
+interface Props {
+  locations: Location[];
+  tags: Tag[];
+  cuisines: string[];
+  restaurants: { id: number; name: string; slug: string }[];
+  googleMapsKey?: string;
+}
+const { locations, tags, cuisines, restaurants, googleMapsKey = '' } = Astro.props;
+
+const vibes = tags.filter((t) => t.category === 'vibe');
+const dietary = tags.filter((t) => t.category === 'dietary');
+const other = tags.filter((t) => t.category === 'other');
+const meals = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks'] as const;
+const hasMapsKey = googleMapsKey.length > 0;
+---
+<form method="post" action="/api/admin/entry" enctype="multipart/form-data" class="entry-form" id="entry-form">
+  <fieldset class="section">
+    <legend>1. Restaurant</legend>
+
+    <label class="field">
+      <span>Name *</span>
+      <input
+        type="text"
+        name="name"
+        required
+        list="restaurant-list"
+        autocomplete="off"
+        id="name-input"
+        placeholder={hasMapsKey ? 'Search a restaurant or address…' : 'Restaurant name'}
+      />
+      <datalist id="restaurant-list">
+        {restaurants.map((r) => <option value={r.name}></option>)}
+      </datalist>
+      <p class="match-hint" id="match-hint" aria-live="polite"></p>
+      {hasMapsKey && (
+        <p class="hint">Pick a result and we'll fill in the address, website, and suburb for you.</p>
+      )}
+    </label>
+
+    <div class="sub-section" id="new-restaurant-fields">
+      <p class="hint">Fill these in only if this is a <strong>new</strong> restaurant.</p>
+      <div class="grid">
+        <label class="field">
+          <span>Cuisine</span>
+          <input type="text" name="cuisine" id="cuisine-input" list="cuisine-list" placeholder="Japanese, Pizza, …" autocomplete="off" />
+          <datalist id="cuisine-list">
+            {cuisines.map((c) => <option value={c}></option>)}
+          </datalist>
+        </label>
+
+        <label class="field">
+          <span>Suburb</span>
+          <input type="text" name="location_name" id="location-input" list="location-list" placeholder="Start typing…" autocomplete="off" />
+          <datalist id="location-list">
+            {locations.map((l) => <option value={l.name}></option>)}
+          </datalist>
+        </label>
+
+        <label class="field">
+          <span>Price</span>
+          <select name="price_tier">
+            <option value="">—</option>
+            {[1, 2, 3, 4, 5].map((p) => (
+              <option value={p}>
+                {'$'.repeat(p)} ({['0–20', '20–50', '50–100', '100–200', '200+'][p - 1]})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Address</span>
+          <input type="text" name="address" id="address-input" />
+        </label>
+
+        <label class="field">
+          <span>Website</span>
+          <input type="url" name="website_url" id="website-input" placeholder="https://…" />
+        </label>
+
+        <label class="field">
+          <span>Google Maps link</span>
+          <input type="url" name="maps_url" id="maps-url-input" placeholder="https://www.google.com/maps/…" />
+        </label>
+      </div>
+
+      <input type="hidden" name="place_id" id="place-id-input" />
+      <input type="hidden" name="lat" id="lat-input" />
+      <input type="hidden" name="lng" id="lng-input" />
+
+      <fieldset class="tags-group">
+        <legend>Vibes</legend>
+        <div class="chips">
+          {vibes.map((t) => (
+            <label class="chip">
+              <input type="checkbox" name="tag_ids" value={t.id} />
+              {t.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset class="tags-group">
+        <legend>Dietary</legend>
+        <div class="chips">
+          {dietary.map((t) => (
+            <label class="chip">
+              <input type="checkbox" name="tag_ids" value={t.id} />
+              {t.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {other.length > 0 && (
+        <fieldset class="tags-group">
+          <legend>Other</legend>
+          <div class="chips">
+            {other.map((t) => (
+              <label class="chip">
+                <input type="checkbox" name="tag_ids" value={t.id} />
+                {t.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+    </div>
+  </fieldset>
+
+  <fieldset class="section">
+    <legend>2. Entry type</legend>
+    <div class="mode-toggle">
+      <label class="radio">
+        <input type="radio" name="mode" value="visit" checked />
+        <span>I visited</span>
+      </label>
+      <label class="radio">
+        <input type="radio" name="mode" value="wishlist" />
+        <span>Wishlist (haven't been)</span>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset class="section" id="visit-fields">
+    <legend>3. Review</legend>
+
+    <div class="grid">
+      <label class="field">
+        <span>Visit date</span>
+        <input type="date" name="visit_date" />
+        <p class="hint">Leave blank if you don't remember.</p>
+      </label>
+      <label class="field">
+        <span>Meal</span>
+        <select name="meal_type">
+          <option value="">—</option>
+          {meals.map((m) => (
+            <option value={m}>{m[0].toUpperCase() + m.slice(1)}</option>
+          ))}
+        </select>
+      </label>
+    </div>
+
+    <fieldset class="ratings">
+      <legend>Ratings (0–10, in steps of 0.5)</legend>
+      <div class="ratings-grid">
+        <RatingSelect name="rating_overall" label="Overall" required />
+        <RatingSelect name="rating_food"    label="Food" />
+        <RatingSelect name="rating_vibe"    label="Vibe" />
+        <RatingSelect name="rating_service" label="Service" />
+        <RatingSelect name="rating_value"   label="Value" />
+        <RatingSelect name="rating_size"    label="Size" />
+      </div>
+      <p class="hint">Size is relative to the category. 10 = hard to finish, 1 = barely a snack.</p>
+    </fieldset>
+
+    <label class="field">
+      <span>Commentary</span>
+      <textarea name="commentary" rows="4" placeholder="What stood out, how it felt…"></textarea>
+    </label>
+
+    <div class="grid">
+      <fieldset class="yn">
+        <legend>Would return?</legend>
+        <label class="radio"><input type="radio" name="would_return" value="1" checked /><span>Yes</span></label>
+        <label class="radio"><input type="radio" name="would_return" value="0" /><span>No</span></label>
+      </fieldset>
+      <label class="field">
+        <span>Instagram post (optional)</span>
+        <input type="url" name="instagram_url" placeholder="https://instagram.com/p/…" />
+      </label>
+    </div>
+
+    <fieldset class="standout">
+      <legend>Menu items</legend>
+      <p class="hint">Star the standouts. Leave blank rows — they're ignored.</p>
+      <div class="items" id="items">
+        <div class="item">
+          <label class="star">
+            <input type="checkbox" name="standout_star" value="1" />
+            <span aria-hidden="true">★</span>
+          </label>
+          <input type="text" name="standout_name" placeholder="Dish name" />
+          <input type="text" name="standout_note" placeholder="Note (optional)" />
+        </div>
+      </div>
+      <button type="button" class="btn" id="add-item">+ Add item</button>
+    </fieldset>
+
+    <fieldset class="photos-section">
+      <legend>Photos</legend>
+      <p class="hint">Added to the review on save. The first one becomes the cover.</p>
+      <div class="upload-row">
+        <label class="upload-btn">
+          <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*" multiple />
+          <span class="btn">📷 Add from library</span>
+        </label>
+        <label class="upload-btn">
+          <input type="file" id="photo-input-camera" accept="image/*" capture="environment" />
+          <span class="btn">📸 Take a photo</span>
+        </label>
+      </div>
+      <ul class="thumbs" id="photo-thumbs"></ul>
+    </fieldset>
+
+    <fieldset class="status">
+      <legend>Save as</legend>
+      <label class="radio"><input type="radio" name="status" value="published" checked /><span>Published</span></label>
+      <label class="radio"><input type="radio" name="status" value="draft" /><span>Draft</span></label>
+    </fieldset>
+  </fieldset>
+
+  <fieldset class="section" id="wishlist-fields" hidden>
+    <legend>3. Wishlist note</legend>
+    <label class="field">
+      <span>What you've heard or want to try</span>
+      <textarea name="wishlist_note" rows="4" placeholder="Heard the omakase bar is unreal…"></textarea>
+    </label>
+  </fieldset>
+
+  <div class="actions">
+    <a href="/admin" class="btn">Cancel</a>
+    <button type="submit" class="btn primary" id="submit-btn">Save entry</button>
+  </div>
+
+  <p class="form-status" id="form-status" hidden></p>
+</form>
+
+<script is:inline define:vars={{ googleMapsKey, hasMapsKey }}>
+  const nameInput = document.getElementById('name-input');
+  const newFields = document.getElementById('new-restaurant-fields');
+  const matchHint = document.getElementById('match-hint');
+  const visitFields = document.getElementById('visit-fields');
+  const wishlistFields = document.getElementById('wishlist-fields');
+  const itemsWrap = document.getElementById('items');
+  const addBtn = document.getElementById('add-item');
+  const photoInput = document.getElementById('photo-input');
+  const photoInputCam = document.getElementById('photo-input-camera');
+  const thumbsList = document.getElementById('photo-thumbs');
+  const form = document.getElementById('entry-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const statusEl = document.getElementById('form-status');
+
+  const existingNames = Array.from(document.querySelectorAll('#restaurant-list option'))
+    .map((o) => o.value.toLowerCase());
+
+  // Prefill from ?name= so links like "+ New review" can carry context.
+  const params = new URLSearchParams(window.location.search);
+  const prefillName = params.get('name');
+  if (prefillName && nameInput && !nameInput.value) {
+    nameInput.value = prefillName;
+  }
+
+  function refreshMatch() {
+    if (!nameInput || !matchHint || !newFields) return;
+    const v = nameInput.value.trim().toLowerCase();
+    if (!v) {
+      matchHint.textContent = '';
+      newFields.hidden = false;
+      return;
+    }
+    if (existingNames.includes(v)) {
+      matchHint.textContent = '✓ Existing restaurant — its details will be used.';
+      matchHint.className = 'match-hint found';
+      newFields.hidden = true;
+    } else {
+      matchHint.textContent = '+ New restaurant — fill in details below.';
+      matchHint.className = 'match-hint create';
+      newFields.hidden = false;
+    }
+  }
+  nameInput?.addEventListener('input', refreshMatch);
+  refreshMatch();
+
+  // Mode toggle
+  document.querySelectorAll('input[name="mode"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const mode = document.querySelector('input[name="mode"]:checked')?.value;
+      if (!visitFields || !wishlistFields) return;
+      const isVisit = mode === 'visit';
+      visitFields.hidden = !isVisit;
+      wishlistFields.hidden = isVisit;
+      document.querySelectorAll('#visit-fields [data-was-required], #visit-fields [required]').forEach((f) => {
+        if (isVisit) f.setAttribute('required', '');
+        else f.removeAttribute('required');
+      });
+    });
+  });
+
+  // Chip + star toggles
+  document.querySelectorAll('.entry-form .chip input').forEach((el) => {
+    function sync() { el.closest('.chip')?.classList.toggle('on', el.checked); }
+    el.addEventListener('change', sync);
+    sync();
+  });
+  document.querySelectorAll('.entry-form .star input').forEach((el) => {
+    function sync() { el.closest('.star')?.classList.toggle('on', el.checked); }
+    el.addEventListener('change', sync);
+    sync();
+  });
+
+  // Add standout item
+  addBtn?.addEventListener('click', () => {
+    if (!itemsWrap) return;
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = `
+      <label class="star">
+        <input type="checkbox" name="standout_star" value="1" />
+        <span aria-hidden="true">★</span>
+      </label>
+      <input type="text" name="standout_name" placeholder="Dish name" />
+      <input type="text" name="standout_note" placeholder="Note (optional)" />
+    `;
+    itemsWrap.appendChild(row);
+    row.querySelector('input[name="standout_name"]')?.focus();
+    row.querySelector('.star input')?.addEventListener('change', function () {
+      this.closest('.star')?.classList.toggle('on', this.checked);
+    });
+  });
+
+  // ---- Photos: in-memory queue, resized + submitted with the form ------------
+  const pendingPhotos = []; // { id, file, url }
+
+  function addPhotos(fileList) {
+    for (const file of fileList) {
+      if (!file.type.startsWith('image/')) continue;
+      const entry = { id: crypto.randomUUID(), file, url: URL.createObjectURL(file) };
+      pendingPhotos.push(entry);
+      renderThumb(entry);
+    }
+  }
+
+  function renderThumb(entry) {
+    if (!thumbsList) return;
+    const li = document.createElement('li');
+    li.className = 'thumb';
+    li.dataset.id = entry.id;
+    li.innerHTML = `
+      <div class="thumb-img"><img alt="" /></div>
+      <button type="button" class="thumb-remove" aria-label="Remove">×</button>
+    `;
+    li.querySelector('img').src = entry.url;
+    li.querySelector('.thumb-remove').addEventListener('click', () => {
+      const idx = pendingPhotos.findIndex((p) => p.id === entry.id);
+      if (idx >= 0) {
+        URL.revokeObjectURL(pendingPhotos[idx].url);
+        pendingPhotos.splice(idx, 1);
+      }
+      li.remove();
+    });
+    thumbsList.appendChild(li);
+  }
+
+  photoInput?.addEventListener('change', (e) => {
+    addPhotos(e.target.files || []);
+    e.target.value = '';
+  });
+  photoInputCam?.addEventListener('change', (e) => {
+    addPhotos(e.target.files || []);
+    e.target.value = '';
+  });
+
+  // Resize to JPEG <= 2000px (reuses the same approach as PhotoManager).
+  async function resizeToJpeg(file, maxDim = 2000, quality = 0.85) {
+    const img = await new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const el = new Image();
+      el.onload = () => { URL.revokeObjectURL(url); resolve(el); };
+      el.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Bad image')); };
+      el.src = url;
+    });
+    const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', quality));
+    if (!blob) throw new Error('Could not encode image');
+    return { blob, width: w, height: h };
+  }
+
+  form?.addEventListener('submit', async (e) => {
+    // If it's wishlist mode and no photos, let the native submit handle it.
+    const mode = document.querySelector('input[name="mode"]:checked')?.value;
+    if (mode !== 'visit' || pendingPhotos.length === 0) return;
+
+    e.preventDefault();
+    if (!submitBtn) return;
+    submitBtn.disabled = true;
+    if (statusEl) { statusEl.hidden = false; statusEl.textContent = 'Processing photos…'; }
+
+    try {
+      const fd = new FormData(form);
+      // Remove any leftover file parts from the hidden inputs.
+      fd.delete('photos');
+      fd.delete('photos_width');
+      fd.delete('photos_height');
+
+      for (let i = 0; i < pendingPhotos.length; i++) {
+        if (statusEl) statusEl.textContent = `Processing photo ${i + 1} of ${pendingPhotos.length}…`;
+        try {
+          const { blob, width, height } = await resizeToJpeg(pendingPhotos[i].file);
+          fd.append('photos', blob, 'photo.jpg');
+          fd.append('photos_width', String(width));
+          fd.append('photos_height', String(height));
+        } catch (err) {
+          console.warn('Resize failed, uploading raw:', err);
+          fd.append('photos', pendingPhotos[i].file);
+          fd.append('photos_width', '');
+          fd.append('photos_height', '');
+        }
+      }
+
+      if (statusEl) statusEl.textContent = 'Saving…';
+      const res = await fetch('/api/admin/entry', { method: 'POST', body: fd, redirect: 'follow' });
+      if (res.redirected) {
+        window.location.href = res.url;
+        return;
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      // Fallback — server returned 200 without redirect.
+      window.location.href = '/admin';
+    } catch (err) {
+      console.error(err);
+      if (statusEl) statusEl.textContent = `Save failed — ${err.message || 'see console'}`;
+      submitBtn.disabled = false;
+    }
+  });
+
+  // ---- Google Places Autocomplete on the Name input -------------------------
+  if (hasMapsKey && nameInput) {
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsKey)}&libraries=places&v=weekly&loading=async&callback=__initPlaces`;
+    script.async = true;
+    window.__initPlaces = function () {
+      if (!window.google?.maps?.places) return;
+      const ac = new google.maps.places.Autocomplete(nameInput, {
+        fields: ['name', 'formatted_address', 'website', 'address_components', 'place_id', 'geometry', 'types'],
+        // Bias toward establishments (restaurants etc.) but still allow generic addresses.
+        types: ['establishment'],
+      });
+      ac.addListener('place_changed', () => {
+        const place = ac.getPlace();
+        const setAlways = (id, val) => {
+          const el = document.getElementById(id);
+          if (el && val != null) el.value = val;
+        };
+
+        // Picking a place is an explicit choice — overwrite Name with the place's name.
+        if (place.name) {
+          nameInput.value = place.name;
+        }
+        if (place.formatted_address) setAlways('address-input', place.formatted_address);
+        if (place.website) setAlways('website-input', place.website);
+
+        // Suburb: prefer locality; fall back to sublocality or postal_town.
+        const comps = place.address_components || [];
+        const pickComp = (types) =>
+          comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name;
+        const suburb = pickComp(['locality']) || pickComp(['sublocality', 'sublocality_level_1']) || pickComp(['postal_town']);
+        if (suburb) setAlways('location-input', suburb);
+
+        // Stash the canonical place identifiers + a Google Maps deep link.
+        if (place.place_id) {
+          setAlways('place-id-input', place.place_id);
+          setAlways('maps-url-input', `https://www.google.com/maps/place/?q=place_id:${place.place_id}`);
+        }
+        const loc = place.geometry?.location;
+        if (loc) {
+          setAlways('lat-input', String(loc.lat()));
+          setAlways('lng-input', String(loc.lng()));
+        }
+
+        // Re-run the existing-vs-new check now that the name has changed.
+        nameInput.dispatchEvent(new Event('input'));
+      });
+
+      // Keep Google's dropdown above the page chrome.
+      const style = document.createElement('style');
+      style.textContent = '.pac-container { z-index: 10000; }';
+      document.head.appendChild(style);
+    };
+    document.head.appendChild(script);
+  }
+</script>
+
+<style>
+  .entry-form { display: flex; flex-direction: column; gap: 1rem; }
+  .section {
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem;
+    border: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+  legend {
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0;
+    margin-bottom: 0.75rem;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+
+  .match-hint {
+    font-size: 0.8rem;
+    margin: 0.25rem 0 0;
+    min-height: 1.1em;
+  }
+  .match-hint.found { color: #2e7d3e; }
+  .match-hint.create { color: #2a5aa3; }
+
+  .sub-section {
+    border-left: 3px solid #eee;
+    padding-left: 0.75rem;
+    margin-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .hint { color: #888; font-size: 0.8rem; margin: 0; }
+
+  .tags-group { border: none; padding: 0; margin: 0; }
+  .tags-group legend {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8a7f6a;
+    font-weight: 400;
+    margin-bottom: 0.4rem;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .chip {
+    display: inline-flex;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #d8d3c4;
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.8rem;
+    user-select: none;
+  }
+  .chip.on { background: #2a2a2a; color: white; border-color: #2a2a2a; }
+  .chip input { display: none; }
+
+  .mode-toggle { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 1rem;
+    border: 1px solid #d8d3c4;
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .yn { display: flex; flex-direction: row; gap: 0.5rem; border: none; padding: 0; }
+  .yn legend {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8a7f6a;
+    font-weight: 400;
+    margin-bottom: 0.4rem;
+    width: 100%;
+  }
+  .status { display: flex; flex-direction: column; gap: 0.4rem; border: none; padding: 0; }
+  .status legend {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #8a7f6a; font-weight: 400; margin-bottom: 0.4rem;
+  }
+
+  .ratings { border: none; padding: 0; margin: 0; }
+  .ratings legend {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #8a7f6a; font-weight: 400; margin-bottom: 0.5rem;
+  }
+  .ratings-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+  @media (max-width: 600px) { .ratings-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .standout { border: none; padding: 0; margin: 0; }
+  .standout legend {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #8a7f6a; font-weight: 400; margin-bottom: 0.4rem;
+  }
+  .items { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.5rem; }
+  .item {
+    display: grid;
+    grid-template-columns: 2rem 1fr 1fr;
+    gap: 0.35rem;
+  }
+  @media (max-width: 600px) {
+    .item { grid-template-columns: 2rem 1fr; }
+    .item input[name='standout_note'] { grid-column: 2; }
+  }
+  .item input { padding: 0.5rem 0.65rem; }
+  .star {
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid #d8d3c4; border-radius: 8px; background: white;
+    cursor: pointer; color: #ccc;
+  }
+  .star input { display: none; }
+  .star.on { color: #f2a00c; background: #fffbeb; border-color: #f4d38a; }
+
+  .photos-section { border: none; padding: 0; margin: 0; }
+  .photos-section legend {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #8a7f6a; font-weight: 400; margin-bottom: 0.4rem;
+  }
+  .upload-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.4rem 0 0.6rem; }
+  .upload-btn input[type='file'] {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .upload-btn .btn { cursor: pointer; }
+  .thumbs {
+    list-style: none; margin: 0; padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 0.5rem;
+  }
+  .thumb { position: relative; }
+  .thumb-img {
+    aspect-ratio: 1 / 1;
+    background: #efece4; border-radius: 8px; overflow: hidden;
+  }
+  .thumb-img img { width: 100%; height: 100%; object-fit: cover; }
+  .thumb-remove {
+    position: absolute; top: 0.25rem; right: 0.25rem;
+    width: 1.5rem; height: 1.5rem; border-radius: 999px;
+    background: rgba(0, 0, 0, 0.75); color: white; border: none;
+    cursor: pointer; font-size: 1rem; line-height: 1; padding: 0;
+  }
+  .thumb-remove:hover { background: #000; }
+
+  .form-status {
+    text-align: right;
+    color: #666;
+    font-size: 0.85rem;
+    margin: 0;
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    padding-top: 0.5rem;
+  }
+</style>

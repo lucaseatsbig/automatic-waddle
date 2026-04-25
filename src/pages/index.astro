@@ -1,0 +1,98 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import FilterBar from '../components/FilterBar.astro';
+import RestaurantCard from '../components/RestaurantCard.astro';
+import { getCuisines, getLocations, getTags, searchRestaurants } from '../lib/db';
+import type { Filters, MealType } from '../lib/types';
+
+const sp = Astro.url.searchParams;
+
+const validMeals: MealType[] = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks'];
+const rawMeal = sp.get('meal');
+const meal: MealType | undefined = rawMeal && (validMeals as string[]).includes(rawMeal)
+  ? (rawMeal as MealType)
+  : undefined;
+
+const rawVisited = sp.get('visited');
+const visited: 'yes' | 'no' | undefined =
+  rawVisited === 'yes' ? 'yes' : rawVisited === 'no' ? 'no' : undefined;
+
+const filters: Filters = {
+  q: sp.get('q')?.trim() || undefined,
+  cuisine: sp.get('cuisine') || undefined,
+  meal,
+  location: sp.get('location') || undefined,
+  visited,
+  price: sp.getAll('price').map(Number).filter((n) => Number.isFinite(n) && n >= 1 && n <= 5),
+  vibes: sp.getAll('vibes'),
+  dietary: sp.getAll('dietary'),
+};
+
+const [restaurants, locations, tags, cuisines] = await Promise.all([
+  searchRestaurants(env.DB, filters),
+  getLocations(env.DB),
+  getTags(env.DB),
+  getCuisines(env.DB),
+]);
+
+const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
+---
+<BaseLayout title="Lucas Eats Big">
+  <header class="site-header">
+    <h1>Lucas Eats Big</h1>
+    <p>A running log of where I eat in Sydney — and where I'd still like to.</p>
+  </header>
+
+  <FilterBar filters={filters} locations={locations} tags={tags} cuisines={cuisines} />
+
+  <section class="results">
+    <p class="count">
+      {restaurants.length} {restaurants.length === 1 ? 'place' : 'places'}
+    </p>
+    <div class="grid">
+      {restaurants.map((r) => (
+        <RestaurantCard restaurant={r} photosBase={photosBase} />
+      ))}
+    </div>
+    {restaurants.length === 0 && (
+      <p class="empty">No places match these filters. Try clearing some.</p>
+    )}
+  </section>
+</BaseLayout>
+
+<style>
+  .site-header {
+    text-align: center;
+    padding: 3rem 1rem 1.5rem;
+  }
+  .site-header h1 {
+    font-size: 2.5rem;
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+  .site-header p {
+    color: #666;
+    margin: 0.5rem 0 0;
+  }
+  .results {
+    padding: 2rem 1rem 4rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .count {
+    color: #666;
+    margin: 0 0 1rem;
+    font-size: 0.9rem;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.25rem;
+  }
+  .empty {
+    text-align: center;
+    color: #888;
+    padding: 3rem 0;
+  }
+</style>

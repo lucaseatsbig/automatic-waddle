@@ -1,0 +1,207 @@
+---
+import type { Location, RestaurantEditData, Tag } from '../../lib/types';
+
+interface Props {
+  restaurant?: RestaurantEditData;
+  locations: Location[];
+  tags: Tag[];
+  cuisines: string[];
+  action: string;
+}
+const { restaurant, locations, tags, cuisines, action } = Astro.props;
+const r = restaurant;
+const tagIds = new Set(r?.tag_ids ?? []);
+const vibes = tags.filter((t) => t.category === 'vibe');
+const dietary = tags.filter((t) => t.category === 'dietary');
+const other = tags.filter((t) => t.category === 'other');
+const currentLocationName = r?.location_id
+  ? locations.find((l) => l.id === r.location_id)?.name ?? ''
+  : '';
+---
+<form method="post" action={action} class="rest-form">
+  <div class="grid">
+    <label class="field span-2">
+      <span>Name *</span>
+      <input type="text" name="name" required value={r?.name ?? ''} />
+    </label>
+
+    <label class="field">
+      <span>Slug</span>
+      <input
+        type="text"
+        name="slug"
+        value={r?.slug ?? ''}
+        placeholder="auto-generated from name"
+      />
+    </label>
+
+    <label class="field">
+      <span>Cuisine</span>
+      <input
+        type="text"
+        name="cuisine"
+        value={r?.cuisine ?? ''}
+        placeholder="Start typing…"
+        list="cuisine-list"
+        autocomplete="off"
+      />
+      <datalist id="cuisine-list">
+        {cuisines.map((c) => <option value={c}></option>)}
+      </datalist>
+    </label>
+
+    <label class="field">
+      <span>Suburb</span>
+      <input
+        type="text"
+        name="location_name"
+        value={currentLocationName}
+        placeholder="Start typing a Sydney suburb…"
+        list="location-list"
+        autocomplete="off"
+      />
+      <datalist id="location-list">
+        {locations.map((l) => <option value={l.name}></option>)}
+      </datalist>
+    </label>
+
+    <label class="field">
+      <span>Price</span>
+      <select name="price_tier">
+        <option value="">—</option>
+        {[1, 2, 3, 4, 5].map((p) => (
+          <option value={p} selected={r?.price_tier === p}>
+            {'$'.repeat(p)} ({['0–20', '20–50', '50–100', '100–200', '200+'][p - 1]})
+          </option>
+        ))}
+      </select>
+    </label>
+
+    <label class="field span-2">
+      <span>Address</span>
+      <input type="text" name="address" value={r?.address ?? ''} />
+    </label>
+
+    <label class="field">
+      <span>Website</span>
+      <input type="url" name="website_url" value={r?.website_url ?? ''} placeholder="https://…" />
+    </label>
+
+    <label class="field">
+      <span>Google Maps link</span>
+      <input type="url" name="maps_url" value={r?.maps_url ?? ''} placeholder="https://www.google.com/maps/…" />
+    </label>
+
+    <input type="hidden" name="place_id" value={r?.place_id ?? ''} />
+    <input type="hidden" name="lat" value={r?.lat ?? ''} />
+    <input type="hidden" name="lng" value={r?.lng ?? ''} />
+
+    <label class="field span-2">
+      <span>Wishlist note <em>(only shown if no review)</em></span>
+      <textarea name="wishlist_note" placeholder="What you've heard or want to try">{r?.wishlist_note ?? ''}</textarea>
+    </label>
+  </div>
+
+  <fieldset class="tags-group">
+    <legend>Vibes</legend>
+    <div class="chips">
+      {vibes.map((t) => (
+        <label class={`chip ${tagIds.has(t.id) ? 'on' : ''}`}>
+          <input type="checkbox" name="tag_ids" value={t.id} checked={tagIds.has(t.id)} />
+          {t.label}
+        </label>
+      ))}
+    </div>
+  </fieldset>
+
+  <fieldset class="tags-group">
+    <legend>Dietary</legend>
+    <div class="chips">
+      {dietary.map((t) => (
+        <label class={`chip ${tagIds.has(t.id) ? 'on' : ''}`}>
+          <input type="checkbox" name="tag_ids" value={t.id} checked={tagIds.has(t.id)} />
+          {t.label}
+        </label>
+      ))}
+    </div>
+  </fieldset>
+
+  {other.length > 0 && (
+    <fieldset class="tags-group">
+      <legend>Other</legend>
+      <div class="chips">
+        {other.map((t) => (
+          <label class={`chip ${tagIds.has(t.id) ? 'on' : ''}`}>
+            <input type="checkbox" name="tag_ids" value={t.id} checked={tagIds.has(t.id)} />
+            {t.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )}
+
+  <div class="actions">
+    <a href="/admin" class="btn">Cancel</a>
+    <button type="submit" class="btn primary">{r ? 'Save changes' : 'Create restaurant'}</button>
+  </div>
+</form>
+
+<script>
+  document.querySelectorAll<HTMLInputElement>('.rest-form .chip input').forEach((el) => {
+    el.addEventListener('change', () => {
+      el.closest('.chip')?.classList.toggle('on', el.checked);
+    });
+  });
+</script>
+
+<style>
+  .rest-form {
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem;
+  }
+  .span-2 { grid-column: 1 / -1; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .span-2 { grid-column: auto; } }
+
+  em { color: #999; font-style: normal; font-size: 0.75rem; }
+
+  .tags-group { border: none; padding: 0; margin: 0; }
+  .tags-group legend {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8a7f6a;
+    margin-bottom: 0.4rem;
+    padding: 0;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .chip {
+    display: inline-flex;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid #d8d3c4;
+    border-radius: 999px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.85rem;
+    user-select: none;
+  }
+  .chip.on { background: #2a2a2a; color: white; border-color: #2a2a2a; }
+  .chip input { display: none; }
+
+  .actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    border-top: 1px solid #eee;
+    padding-top: 1rem;
+  }
+</style>

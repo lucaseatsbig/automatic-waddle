@@ -1,0 +1,31 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import UnifiedEntryForm from '../../../components/admin/UnifiedEntryForm.astro';
+import { getAllRestaurantsBasic, getCuisineSuggestions, getLocations, getTags } from '../../../lib/db';
+
+const [locations, tags, cuisines, restaurants] = await Promise.all([
+  getLocations(env.DB),
+  getTags(env.DB),
+  getCuisineSuggestions(env.DB),
+  getAllRestaurantsBasic(env.DB),
+]);
+
+const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
+---
+<AdminLayout title="New entry">
+  <h1>New entry</h1>
+  <p class="sub">One form — restaurant (or existing), review or wishlist, and photos. Save once and you're done.</p>
+  <UnifiedEntryForm
+    locations={locations}
+    tags={tags}
+    cuisines={cuisines}
+    restaurants={restaurants}
+    googleMapsKey={googleMapsKey}
+  />
+</AdminLayout>
+
+<style>
+  h1 { margin: 0 0 0.35rem; font-size: 1.5rem; }
+  .sub { color: #666; margin: 0 0 1.25rem; font-size: 0.9rem; }
+</style>
