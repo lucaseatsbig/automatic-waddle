@@ -284,7 +284,7 @@ CREATE TABLE restaurants (
   created_at    INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at    INTEGER NOT NULL DEFAULT (unixepoch())
 , place_id TEXT, lat      REAL, lng      REAL, maps_url TEXT);
-INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(4,'lu-s-deli','Lu’s Deli','Modern Australian',3,'52-60 Enmore Road',3,'https://lusdeli.com.au/','https://lusdeli.com.au/pdf/pdf_20260423_181048_9e8c78.pdf',NULL,1777028711,1777029938,NULL,NULL,NULL,NULL);
+INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(4,'lu-s-deli','Lu’s Deli','Modern Australian',3,'52-60 Enmore Road',3,'https://lusdeli.com.au/','https://lusdeli.com.au/pdf/pdf_20260423_181048_9e8c78.pdf',NULL,1777028711,1777204912,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(5,'best-taste-of-asia','Best Taste of Asia',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777070290,1777070300,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(6,'juan-bowl-tea','Juan Bowl & Tea','Japanese',6,NULL,2,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(7,'lox-in-a-box','Lox in a Box','German, Polish',8,NULL,1,'https://www.loxinabox.com.au/',NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
@@ -425,7 +425,6 @@ INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address",
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(142,'s-more','S’More',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(143,'besuto','Besuto','Japanese',223,NULL,5,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(144,'a-tavola','A Tavola','Italian',4,NULL,4,'https://atavola.com.au/darlinghurst/',NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
-INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(145,'moku','Moku','Japanese',4,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(146,'fred-s','Fred’s','Modern Australian',7,NULL,5,'https://merivale.com/venues/freds/menu/',NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(147,'baccomatto-osteria','Baccomatto Osteria','Italian',50,NULL,3,'http://www.baccomattoosteria.com.au/',NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(148,'charlie-franks','Charlie & Franks','Cafe',107,NULL,2,'https://www.charlieandfranks.com.au/',NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
@@ -441,7 +440,7 @@ INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address",
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(158,'genovese-coffee-house','Genovese Coffee House',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(159,'valentinas','Valentinas','Cafe',12,NULL,2,'https://www.valentinassyd.com/',NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(160,'masuya','Masuya',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
-INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(161,'moku-2','Moku','Japanese',4,NULL,NULL,'https://www.mokusydney.com/',NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
+INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(161,'moku','Moku','Japanese',4,NULL,NULL,'https://www.mokusydney.com/',NULL,NULL,1777089289,1777207459,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(162,'sofia-on-cleveland','Sofia on Cleveland',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(163,'mimi-s','Mimi’s','Mediterranean',49,NULL,5,'https://merivale.com/venues/mimis/',NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(164,'turka-cafe','Turka Cafe','Turkish',107,NULL,2,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
@@ -510,7 +509,6 @@ INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address",
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(227,'clam-bar','Clam Bar',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(228,'sokyo','Sokyo',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(229,'cafe-paci','Cafe Paci','Modern Australian',3,NULL,3,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
-INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(230,'genovese-coffee-house-2','Genovese Coffee House',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(231,'funda','Funda',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(232,'king-clarence','King Clarence',NULL,1,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(233,'bella-brutta','Bella Brutta',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
@@ -518,17 +516,12 @@ INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address",
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(235,'callao','Callao','Japanese, Peruvian',15,NULL,4,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(236,'margaret','Margaret',NULL,NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
 INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(237,'don-t-tell-uncle','Don’t Tell Uncle','Indian',NULL,NULL,NULL,NULL,NULL,NULL,1777089289,1777089289,NULL,NULL,NULL,NULL);
+INSERT INTO "restaurants" ("id","slug","name","cuisine","location_id","address","price_tier","website_url","menu_url","wishlist_note","created_at","updated_at","place_id","lat","lng","maps_url") VALUES(238,'henrietta-charcoal-chicken-surry-hills','Henrietta Charcoal Chicken','Mediterranean',2,'Shop 1/500 Crown St, Surry Hills NSW 2010, Australia',NULL,'https://www.henriettachicken.com/',NULL,NULL,1777204867,1777204882,'ChIJIT2BbkevEmsRxyskwZc6Lqk',-33.887017,151.2137613,'https://www.google.com/maps/place/?q=place_id:ChIJIT2BbkevEmsRxyskwZc6Lqk');
 CREATE TABLE restaurant_tags (
   restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
   tag_id        INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   PRIMARY KEY (restaurant_id, tag_id)
 );
-INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,10);
-INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,8);
-INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,5);
-INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,4);
-INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,15);
-INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,19);
 INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(6,1);
 INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(6,8);
 INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(6,4);
@@ -1058,6 +1051,17 @@ INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(235,8);
 INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(235,3);
 INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(235,4);
 INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(235,2);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(238,10);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(238,3);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(238,12);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(238,9);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(238,19);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,10);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,8);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,5);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,4);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,15);
+INSERT INTO "restaurant_tags" ("restaurant_id","tag_id") VALUES(4,19);
 CREATE TABLE standout_items (
   id           INTEGER PRIMARY KEY,
   review_id    INTEGER NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
@@ -1242,6 +1246,12 @@ CREATE TABLE photos (
   sort_order INTEGER NOT NULL DEFAULT 0,
   is_cover   INTEGER NOT NULL DEFAULT 0
 );
+INSERT INTO "photos" ("id","review_id","r2_key","alt","width","height","sort_order","is_cover") VALUES(1,3,'reviews/3/9461c362-b2aa-4836-b60e-1ec2b262e6e5.jpg',NULL,1500,2000,0,1);
+INSERT INTO "photos" ("id","review_id","r2_key","alt","width","height","sort_order","is_cover") VALUES(2,3,'reviews/3/66d3a3de-a76e-4e73-90af-4a21673e4eaa.jpg',NULL,1500,2000,1,0);
+INSERT INTO "photos" ("id","review_id","r2_key","alt","width","height","sort_order","is_cover") VALUES(3,3,'reviews/3/05dde1ac-539c-48ae-a13f-2d9a9bba2fe0.jpg',NULL,1500,2000,2,0);
+INSERT INTO "photos" ("id","review_id","r2_key","alt","width","height","sort_order","is_cover") VALUES(4,3,'reviews/3/70deb5c7-44bc-4577-94b1-c0faf15e5819.jpg',NULL,1500,2000,3,0);
+INSERT INTO "photos" ("id","review_id","r2_key","alt","width","height","sort_order","is_cover") VALUES(5,3,'reviews/3/dd53e724-2570-4816-8ba4-046139a08efa.jpg',NULL,1500,2000,4,0);
+INSERT INTO "photos" ("id","review_id","r2_key","alt","width","height","sort_order","is_cover") VALUES(6,3,'reviews/3/56246035-599d-47b2-b3a2-febdcdd208d4.jpg',NULL,1500,2000,5,0);
 CREATE TABLE cuisine_suggestions (
   name TEXT PRIMARY KEY
 );
@@ -1328,7 +1338,7 @@ CREATE TABLE IF NOT EXISTS "reviews" (
   created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
-INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rating_overall","rating_food","rating_vibe","rating_service","rating_value","rating_size","commentary","would_return","instagram_url","status","created_at","updated_at") VALUES(3,4,'lu-s-deli-2026-04-17','2026-04-17','dinner',7.5,7.5,8,10,8,7.5,'Nice atmosphere, but quite loud. The staff are the most friendliest bunch. It’s family run so they really care about their customers and experience. The deli they have for lunch is also fantastic.',1,NULL,'published',1777029092,1777029110);
+INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rating_overall","rating_food","rating_vibe","rating_service","rating_value","rating_size","commentary","would_return","instagram_url","status","created_at","updated_at") VALUES(3,4,'lu-s-deli-2026-04-17','2026-04-17','dinner',7.5,7.5,8,10,8,7.5,'Nice atmosphere, but quite loud. The staff are the most friendliest bunch. It’s family run so they really care about their customers and experience. The deli they have for lunch is also fantastic.',1,NULL,'published',1777029092,1777204948);
 INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rating_overall","rating_food","rating_vibe","rating_service","rating_value","rating_size","commentary","would_return","instagram_url","status","created_at","updated_at") VALUES(4,6,'juan-bowl-tea-undated',NULL,'dinner',9,NULL,NULL,NULL,NULL,8,NULL,1,'https://www.instagram.com/p/CQf63tEn_Mx/?utm_source=ig_web_copy_link','published',1777089289,1777089289);
 INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rating_overall","rating_food","rating_vibe","rating_service","rating_value","rating_size","commentary","would_return","instagram_url","status","created_at","updated_at") VALUES(5,7,'lox-in-a-box-undated',NULL,'breakfast',8,NULL,NULL,NULL,NULL,7,NULL,1,'https://www.instagram.com/p/CMZFT7unEzb/?utm_source=ig_web_copy_link','published',1777089289,1777089289);
 INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rating_overall","rating_food","rating_vibe","rating_service","rating_value","rating_size","commentary","would_return","instagram_url","status","created_at","updated_at") VALUES(6,8,'platform-eighty-two-undated',NULL,'brunch',7,NULL,NULL,NULL,NULL,10,NULL,1,'https://www.instagram.com/p/CMRYeJWswFH/?utm_source=ig_web_copy_link','published',1777089289,1777089289);
@@ -1449,6 +1459,7 @@ INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rat
 INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rating_overall","rating_food","rating_vibe","rating_service","rating_value","rating_size","commentary","would_return","instagram_url","status","created_at","updated_at") VALUES(121,226,'surlys-american-tavern-undated',NULL,'dinner',7,NULL,NULL,NULL,NULL,8,NULL,1,NULL,'published',1777089289,1777089289);
 INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rating_overall","rating_food","rating_vibe","rating_service","rating_value","rating_size","commentary","would_return","instagram_url","status","created_at","updated_at") VALUES(122,229,'cafe-paci-undated',NULL,'dinner',8,NULL,NULL,NULL,NULL,8,NULL,1,NULL,'published',1777089289,1777089289);
 INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rating_overall","rating_food","rating_vibe","rating_service","rating_value","rating_size","commentary","would_return","instagram_url","status","created_at","updated_at") VALUES(123,235,'callao-undated',NULL,'dinner',9,NULL,NULL,NULL,NULL,7,NULL,1,NULL,'published',1777089289,1777089289);
+INSERT INTO "reviews" ("id","restaurant_id","slug","visit_date","meal_type","rating_overall","rating_food","rating_vibe","rating_service","rating_value","rating_size","commentary","would_return","instagram_url","status","created_at","updated_at") VALUES(124,238,'henrietta-charcoal-chicken-surry-hills-undated',NULL,'dinner',10,NULL,NULL,8,8.5,NULL,NULL,1,NULL,'published',1777204867,1777204867);
 DELETE FROM sqlite_sequence;
 INSERT INTO "sqlite_sequence" ("name","seq") VALUES('d1_migrations',4);
 CREATE INDEX idx_photos_review       ON photos(review_id);
