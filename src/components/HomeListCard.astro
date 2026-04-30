@@ -1,0 +1,214 @@
+---
+import type { RestaurantCardData } from '../lib/types';
+import { placePhotoUrl } from '../lib/places';
+
+interface Props {
+  restaurant: RestaurantCardData;
+  photosBase: string;
+  hideOnDesktop?: boolean;
+}
+const { restaurant: r, photosBase, hideOnDesktop = false } = Astro.props;
+
+const uploadedCover = r.cover_r2_key && photosBase ? `${photosBase}/${r.cover_r2_key}` : null;
+const placesCover = r.hero_photo_name ? placePhotoUrl(r.hero_photo_name, 200) : null;
+const heroSrc = uploadedCover ?? placesCover;
+
+const ratingFmt = r.avg_overall != null ? r.avg_overall.toFixed(1) : null;
+const priceSymbol = r.price_tier ? '$'.repeat(r.price_tier) : '';
+
+function timeAgo(iso: string | null): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const days = Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24));
+  if (days < 1) return 'today';
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  const yrs = Math.floor(days / 365);
+  return yrs === 1 ? '1yr ago' : `${yrs}yrs ago`;
+}
+
+const ago = r.visited ? timeAgo(r.latest_visit_date) : null;
+
+// Surface vibe tags first ("date spot", "casual"), then dietary, then other.
+// Vibes are the most useful at-a-glance signal for browsing.
+const categoryOrder: Record<string, number> = { vibe: 0, dietary: 1, other: 2 };
+const tagsToShow = [...r.tags]
+  .sort((a, b) => (categoryOrder[a.category] ?? 99) - (categoryOrder[b.category] ?? 99))
+  .slice(0, 4);
+---
+<a
+  href={`/restaurants/${r.slug}`}
+  class:list={['card', { wishlist: !r.visited, 'desktop-hide': hideOnDesktop }]}
+>
+  <div class="thumb">
+    {heroSrc
+      ? <img src={heroSrc} alt="" loading="lazy" decoding="async" width="72" height="72" />
+      : <div class="placeholder" aria-hidden="true">{r.name.charAt(0).toUpperCase()}</div>}
+  </div>
+  <div class="lead">
+    <div class="title-row">
+      <span class="name">{r.name}</span>
+      {priceSymbol && <span class="price">{priceSymbol}</span>}
+      {r.cuisine && <span class="cuisine">{r.cuisine}</span>}
+      {r.location && <span class="location">{r.location}</span>}
+    </div>
+    {!r.visited && r.wishlist_note && <p class="note">{r.wishlist_note}</p>}
+  </div>
+  <div class="tags">
+    {tagsToShow.map((t) => (
+      <span class={`chip chip-${t.category}`}>{t.label.toLowerCase()}</span>
+    ))}
+  </div>
+  <div class="when">{ago ?? (r.visited ? '–' : '')}</div>
+  <div class="rating">
+    {ratingFmt
+      ? <><span class="num">{ratingFmt}</span><span class="denom">/10</span></>
+      : <span class="dash">–</span>}
+  </div>
+</a>
+
+<style>
+  .card {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 2fr) minmax(0, 1.8fr) 70px 70px;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.65rem 0.9rem;
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    background: var(--bg);
+    transition: border-color 0.1s, background 0.1s;
+  }
+  .card:hover { border-color: var(--terracotta); background: var(--paper); }
+  .card.wishlist {
+    border: 1px dashed var(--rule-strong);
+    background: var(--paper);
+  }
+  .card.wishlist:hover { border-color: var(--forest-soft); }
+
+  .thumb {
+    width: 72px;
+    height: 72px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--paper);
+    flex-shrink: 0;
+  }
+  .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    color: var(--muted);
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--paper) 0,
+      var(--paper) 8px,
+      rgba(26, 40, 32, 0.04) 8px,
+      rgba(26, 40, 32, 0.04) 16px
+    );
+  }
+
+  .lead { min-width: 0; }
+  .title-row {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+  .name {
+    font-family: var(--serif);
+    font-size: 1.0625rem;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  .price {
+    font-family: var(--sans);
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .cuisine, .location {
+    font-family: var(--sans);
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .cuisine::before, .location::before { content: '· '; color: var(--rule-strong); }
+  .note {
+    font-family: var(--serif);
+    color: var(--ink);
+    font-size: 0.8125rem;
+    font-style: italic;
+    margin: 0.3rem 0 0;
+    line-height: 1.4;
+    opacity: 0.75;
+  }
+
+  .tags {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .chip {
+    font-family: var(--sans);
+    font-size: 0.6875rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 999px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .chip-vibe { background: rgba(184, 84, 58, 0.08); border-color: rgba(184, 84, 58, 0.2); color: var(--terracotta); }
+  .chip-dietary { background: rgba(45, 69, 56, 0.08); border-color: rgba(45, 69, 56, 0.2); color: var(--forest-soft); }
+
+  .when {
+    font-family: var(--sans);
+    color: var(--muted);
+    font-size: 0.8125rem;
+    text-align: right;
+  }
+
+  .rating {
+    text-align: right;
+    font-family: var(--serif);
+    color: var(--terracotta);
+    line-height: 1;
+  }
+  .rating .num { font-size: 1.25rem; font-weight: 600; }
+  .rating .denom { font-size: 0.7rem; color: var(--muted); margin-left: 0.1rem; }
+  .rating .dash { color: var(--rule-strong); font-size: 1rem; }
+
+  @media (min-width: 601px) {
+    .card.desktop-hide { display: none; }
+  }
+  @media (max-width: 720px) {
+    .card {
+      grid-template-columns: 56px 1fr auto;
+      gap: 0.75rem;
+      padding: 0.6rem 0.75rem;
+      border-radius: 12px;
+    }
+    .thumb { width: 56px; height: 56px; border-radius: 8px; }
+    .tags, .when { display: none; }
+    .name { font-size: 0.98rem; }
+    .cuisine, .location, .price { font-size: 0.78rem; }
+    .rating .num { font-size: 1.05rem; }
+  }
+</style>

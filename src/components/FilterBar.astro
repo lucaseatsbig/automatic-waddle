@@ -1,5 +1,6 @@
 ---
 import type { Filters, Location, Tag } from '../lib/types';
+import { REGIONS } from '../lib/regions';
 
 interface Props {
   filters: Filters;
@@ -10,184 +11,542 @@ interface Props {
 const { filters, locations, tags, cuisines } = Astro.props;
 
 const vibes = tags.filter((t) => t.category === 'vibe');
-const dietary = tags.filter((t) => t.category === 'dietary');
-const meals = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks'] as const;
-
 const isOn = (arr: string[] | undefined, v: string) => (arr ?? []).includes(v);
----
-<form class="filter-bar" method="get" action="/">
-  <div class="row row-top">
-    <input
-      type="search"
-      name="q"
-      placeholder="Search name or standout dish…"
-      value={filters.q ?? ''}
-    />
-    <select name="cuisine" aria-label="Cuisine">
-      <option value="">All cuisines</option>
-      {cuisines.map((c) => (
-        <option value={c} selected={filters.cuisine === c}>{c}</option>
-      ))}
-    </select>
-    <select name="location" aria-label="Location">
-      <option value="">All locations</option>
-      {locations.map((l) => (
-        <option value={l.slug} selected={filters.location === l.slug}>{l.name}</option>
-      ))}
-    </select>
-    <select name="meal" aria-label="Meal type">
-      <option value="">Any meal</option>
-      {meals.map((m) => (
-        <option value={m} selected={filters.meal === m}>
-          {m[0].toUpperCase() + m.slice(1)}
-        </option>
-      ))}
-    </select>
-    <select name="visited" aria-label="Visited">
-      <option value="">Visited & wishlist</option>
-      <option value="yes" selected={filters.visited === 'yes'}>Visited only</option>
-      <option value="no" selected={filters.visited === 'no'}>Wishlist only</option>
-    </select>
-  </div>
 
-  <fieldset class="chips-group">
-    <legend>Price</legend>
-    <div class="chips">
-      {[1, 2, 3, 4, 5].map((p) => (
-        <label class={`chip ${(filters.price ?? []).includes(p) ? 'on' : ''}`}>
-          <input type="checkbox" name="price" value={p} checked={(filters.price ?? []).includes(p)} />
-          {'$'.repeat(p)}
+const sort = filters.sort ?? 'recent';
+const sortLabels: Record<string, string> = {
+  rating: 'Best first',
+  recent: 'Recently visited',
+  name: 'A→Z',
+};
+
+const TOP_RATED_THRESHOLD = 7;
+const topRated = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
+
+const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
+  { tier: 1, symbol: '$', range: 'under $20pp' },
+  { tier: 2, symbol: '$$', range: '$20–40pp' },
+  { tier: 3, symbol: '$$$', range: '$40–80pp' },
+  { tier: 4, symbol: '$$$$', range: '$80–150pp' },
+  { tier: 5, symbol: '$$$$$', range: '$150+pp' },
+];
+
+const locationValue = filters.region ? `region:${filters.region}` : (filters.location ?? '');
+const locationLabel = (() => {
+  if (filters.region) {
+    return REGIONS.find((r) => r.slug === filters.region)?.name ?? filters.region;
+  }
+  if (filters.location) {
+    return locations.find((l) => l.slug === filters.location)?.name ?? filters.location;
+  }
+  return 'Anywhere';
+})();
+
+const hasFilters = !!(
+  filters.cuisine ||
+  filters.location ||
+  filters.region ||
+  topRated ||
+  (filters.vibes && filters.vibes.length) ||
+  (filters.price && filters.price.length)
+);
+
+interface Chip {
+  key: string;
+  label: string;
+  removeName: string;
+  removeValue?: string;
+}
+const activeChips: Chip[] = [];
+if (filters.cuisine) activeChips.push({ key: 'cu', label: filters.cuisine, removeName: 'cuisine' });
+if (filters.region) {
+  const rname = REGIONS.find((r) => r.slug === filters.region)?.name ?? filters.region;
+  activeChips.push({ key: 'rg', label: rname, removeName: 'location' });
+} else if (filters.location) {
+  const locName = locations.find((l) => l.slug === filters.location)?.name ?? filters.location;
+  activeChips.push({ key: 'su', label: locName, removeName: 'location' });
+}
+if (topRated) activeChips.push({ key: 'tr', label: `Top rated (${TOP_RATED_THRESHOLD}+)`, removeName: 'minRating' });
+for (const slug of filters.vibes ?? []) {
+  const t = vibes.find((x) => x.slug === slug);
+  if (t) activeChips.push({ key: `v-${slug}`, label: t.label, removeName: 'vibes', removeValue: slug });
+}
+for (const tier of filters.price ?? []) {
+  const p = PRICE_TIERS.find((x) => x.tier === tier);
+  if (p) activeChips.push({ key: `p-${tier}`, label: `${p.symbol} ${p.range}`, removeName: 'price', removeValue: String(tier) });
+}
+---
+<form class="filter-bar" method="get" action="/all">
+  <div class="bar-inner">
+    <div class="top-row">
+      <div class="pill-select" data-name="cuisine">
+        <input type="hidden" name="cuisine" value={filters.cuisine ?? ''} />
+        <button type="button" class:list={['pill', { on: !!filters.cuisine }]} data-pill-trigger>
+          <span class="meta">Cuisine</span>
+          <span class="label">{filters.cuisine || 'Any'}</span>
+          <span class="caret" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </button>
+        <div class="panel" hidden>
+          {filters.cuisine && (
+            <button type="button" class="opt clear" data-value="">Clear</button>
+          )}
+          {cuisines.map((c) => (
+            <button
+              type="button"
+              class:list={['opt', { on: filters.cuisine === c }]}
+              data-value={c}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div class="pill-select" data-name="location">
+        <input type="hidden" name="location" value={locationValue} />
+        <button type="button" class:list={['pill', { on: !!locationValue }]} data-pill-trigger>
+          <span class="meta">Location</span>
+          <span class="label">{locationLabel}</span>
+          <span class="caret" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </button>
+        <div class="panel" hidden>
+          {locationValue && (
+            <button type="button" class="opt clear" data-value="">Clear</button>
+          )}
+          <div class="opt-group-label">Regions</div>
+          {REGIONS.map((r) => (
+            <button
+              type="button"
+              class:list={['opt', { on: locationValue === `region:${r.slug}` }]}
+              data-value={`region:${r.slug}`}
+            >
+              {r.name}
+            </button>
+          ))}
+          <div class="opt-group-label">Suburbs</div>
+          {locations.map((l) => (
+            <button
+              type="button"
+              class:list={['opt', { on: locationValue === l.slug }]}
+              data-value={l.slug}
+            >
+              {l.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div class="pill-select" data-name="sort">
+        <input type="hidden" name="sort" value={sort === 'recent' ? '' : sort} />
+        <button type="button" class:list={['pill', { on: sort !== 'recent' }]} data-pill-trigger>
+          <span class="meta">Sort</span>
+          <span class="label">{sortLabels[sort]}</span>
+          <span class="caret" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </button>
+        <div class="panel" hidden>
+          <button type="button" class:list={['opt', { on: sort === 'rating' }]} data-value="rating">Best first</button>
+          <button type="button" class:list={['opt', { on: sort === 'recent' }]} data-value="">Recently visited</button>
+          <button type="button" class:list={['opt', { on: sort === 'name' }]} data-value="name">A to Z</button>
+        </div>
+      </div>
+
+      <div class="toggle-wrap">
+        <input type="hidden" name="minRating" value={topRated ? String(TOP_RATED_THRESHOLD) : ''} />
+        <button
+          type="button"
+          class:list={['pill', 'toggle', { on: topRated }]}
+          data-top-rated
+          aria-pressed={topRated ? 'true' : 'false'}
+        >
+          <span class="check" aria-hidden="true">{topRated ? '✓' : ''}</span>
+          Top rated ({TOP_RATED_THRESHOLD}+)
+        </button>
+      </div>
+    </div>
+
+    <div class="chip-row">
+      <span class="row-label">Price</span>
+      {PRICE_TIERS.map((p) => (
+        <label class:list={['price-chip', { on: (filters.price ?? []).includes(p.tier) }]}>
+          <input
+            type="checkbox"
+            name="price"
+            value={p.tier}
+            checked={(filters.price ?? []).includes(p.tier)}
+          />
+          <span class="symbol">{p.symbol}</span>
+          <span class="range">{p.range}</span>
         </label>
       ))}
     </div>
-  </fieldset>
 
-  {vibes.length > 0 && (
-    <fieldset class="chips-group">
-      <legend>Vibes</legend>
-      <div class="chips">
+    {vibes.length > 0 && (
+      <div class="chip-row">
+        <span class="row-label">Vibe</span>
         {vibes.map((t) => (
-          <label class={`chip ${isOn(filters.vibes, t.slug) ? 'on' : ''}`}>
-            <input type="checkbox" name="vibes" value={t.slug} checked={isOn(filters.vibes, t.slug)} />
+          <label class:list={['vibe-chip', { on: isOn(filters.vibes, t.slug) }]}>
+            <input
+              type="checkbox"
+              name="vibes"
+              value={t.slug}
+              checked={isOn(filters.vibes, t.slug)}
+            />
             {t.label}
           </label>
         ))}
       </div>
-    </fieldset>
-  )}
+    )}
 
-  {dietary.length > 0 && (
-    <fieldset class="chips-group">
-      <legend>Dietary</legend>
-      <div class="chips">
-        {dietary.map((t) => (
-          <label class={`chip ${isOn(filters.dietary, t.slug) ? 'on' : ''}`}>
-            <input type="checkbox" name="dietary" value={t.slug} checked={isOn(filters.dietary, t.slug)} />
-            {t.label}
-          </label>
+    {activeChips.length > 0 && (
+      <div class="active-row">
+        <span class="row-label applied">Applied</span>
+        {activeChips.map((chip) => (
+          <button
+            type="button"
+            class="active-chip"
+            data-remove-name={chip.removeName}
+            data-remove-value={chip.removeValue ?? ''}
+          >
+            {chip.label}
+            <span class="x" aria-hidden="true">×</span>
+          </button>
         ))}
+        {hasFilters && (
+          <a href="/all" class="clear-all">Clear all</a>
+        )}
       </div>
-    </fieldset>
-  )}
-
-  <div class="row row-actions">
-    <a href="/" class="reset">Clear all</a>
-    <button type="submit">Apply filters</button>
+    )}
   </div>
+
+  <noscript>
+    <button type="submit" class="apply-fallback">Apply filters</button>
+  </noscript>
 </form>
 
 <script>
-  // Keep chip visual state in sync when a checkbox toggles.
-  document.querySelectorAll<HTMLInputElement>('.filter-bar .chip input').forEach((el) => {
-    el.addEventListener('change', () => {
-      el.closest('.chip')?.classList.toggle('on', el.checked);
+  const form = document.querySelector<HTMLFormElement>('.filter-bar');
+  if (form) {
+    const submitNow = () => form.submit();
+
+    const pillSelects = form.querySelectorAll<HTMLDivElement>('.pill-select');
+    const closeAllPanels = () => {
+      pillSelects.forEach((sel) => {
+        const panel = sel.querySelector<HTMLDivElement>('.panel');
+        if (panel) panel.hidden = true;
+      });
+    };
+    pillSelects.forEach((sel) => {
+      const trigger = sel.querySelector<HTMLButtonElement>('[data-pill-trigger]');
+      const panel = sel.querySelector<HTMLDivElement>('.panel');
+      const hidden = sel.querySelector<HTMLInputElement>('input[type="hidden"]');
+      if (!trigger || !panel || !hidden) return;
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wasOpen = !panel.hidden;
+        closeAllPanels();
+        panel.hidden = wasOpen;
+      });
+      panel.querySelectorAll<HTMLButtonElement>('.opt').forEach((opt) => {
+        opt.addEventListener('click', (e) => {
+          e.stopPropagation();
+          hidden.value = opt.dataset.value ?? '';
+          panel.hidden = true;
+          submitNow();
+        });
+      });
     });
-  });
+    document.addEventListener('click', closeAllPanels);
+
+    const topRatedBtn = form.querySelector<HTMLButtonElement>('[data-top-rated]');
+    const topRatedHidden = form.querySelector<HTMLInputElement>('input[name="minRating"]');
+    if (topRatedBtn && topRatedHidden) {
+      topRatedBtn.addEventListener('click', () => {
+        topRatedHidden.value = topRatedHidden.value ? '' : '7';
+        submitNow();
+      });
+    }
+
+    form.querySelectorAll<HTMLInputElement>('.vibe-chip input, .price-chip input').forEach((cb) => {
+      cb.addEventListener('change', submitNow);
+    });
+
+    form.querySelectorAll<HTMLButtonElement>('.active-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const name = chip.dataset.removeName;
+        const value = chip.dataset.removeValue;
+        if (!name) return;
+        if ((name === 'vibes' || name === 'price') && value) {
+          const cb = form.querySelector<HTMLInputElement>(`input[name="${name}"][value="${value}"]`);
+          if (cb) cb.checked = false;
+        } else {
+          const input = form.querySelector<HTMLInputElement>(`input[name="${name}"]`);
+          if (input) input.value = '';
+        }
+        submitNow();
+      });
+    });
+  }
 </script>
 
 <style>
   .filter-bar {
-    max-width: 1200px;
+    background: var(--paper);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 1.25rem 1.5rem;
+    font-family: var(--sans);
+  }
+  .bar-inner {
+    max-width: 1280px;
     margin: 0 auto;
-    padding: 0 1rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.875rem;
   }
-  .row {
+  @media (max-width: 640px) {
+    .filter-bar { padding: 0.875rem 1rem; }
+  }
+
+  /* Top row */
+  .top-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.6rem;
-    align-items: center;
+    gap: 0.625rem;
+    align-items: stretch;
   }
-  .row input[type='search'],
-  .row select {
-    padding: 0.55rem 0.8rem;
-    border: 1px solid #d8d3c4;
-    border-radius: 8px;
-    background: white;
-    font-size: 0.9rem;
-  }
-  .row input[type='search'] {
-    flex: 1 1 260px;
-    min-width: 220px;
-  }
-  .chips-group {
-    border: none;
-    padding: 0;
-    margin: 0;
-  }
-  .chips-group legend {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #8a7f6a;
-    margin-bottom: 0.45rem;
-    padding: 0;
-  }
-  .chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-  .chip {
+
+  /* Pill button (used by selects + toggle) */
+  .pill {
     display: inline-flex;
     align-items: center;
-    padding: 0.4rem 0.85rem;
-    border: 1px solid #d8d3c4;
-    border-radius: 999px;
-    background: white;
+    gap: 0.5rem;
+    border: 1px solid var(--rule-strong);
+    background: var(--bg);
+    color: var(--ink);
+    border-radius: 12px;
+    padding: 0.5rem 0.85rem 0.5rem 1rem;
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 500;
     cursor: pointer;
-    font-size: 0.85rem;
-    user-select: none;
-    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    outline: none;
+    white-space: nowrap;
+    transition: border-color 0.1s, background 0.1s, color 0.1s;
+    min-height: 44px;
   }
-  .chip:hover { border-color: #a89a7a; }
-  .chip.on {
-    background: #2a2a2a;
-    color: white;
-    border-color: #2a2a2a;
+  .pill:hover { border-color: var(--ink); }
+  .pill .meta {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    text-transform: uppercase;
   }
-  .chip input { display: none; }
-  .row-actions {
-    justify-content: flex-end;
-    padding-top: 0.25rem;
+  .pill .label { font-weight: 500; }
+  .pill.on {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
   }
-  button[type='submit'] {
-    padding: 0.6rem 1.3rem;
-    background: #2a2a2a;
-    color: white;
+  .pill.on .meta { color: rgba(255, 255, 255, 0.7); }
+  .pill .caret {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(26, 40, 32, 0.06);
+    color: var(--ink);
+  }
+  .pill.on .caret {
+    background: rgba(255, 255, 255, 0.18);
+    color: var(--bg);
+  }
+
+  /* Pill select dropdown */
+  .pill-select { position: relative; }
+  .panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(26, 40, 32, 0.12);
+    min-width: 240px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 0.25rem 0;
+  }
+  .opt {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.55rem 0.875rem;
     border: none;
-    border-radius: 8px;
+    background: transparent;
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    color: var(--ink);
     cursor: pointer;
-    font-size: 0.9rem;
   }
-  button[type='submit']:hover { background: #000; }
-  .reset {
-    color: #666;
+  .opt:hover { background: var(--paper); }
+  .opt.on { background: var(--paper); font-weight: 600; }
+  .opt.clear {
+    color: var(--muted);
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 0.25rem;
+  }
+  .opt-group-label {
+    padding: 0.5rem 0.875rem 0.25rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* Top rated toggle */
+  .pill.toggle {
+    padding-left: 0.875rem;
+  }
+  .pill.toggle .check {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1.5px solid var(--rule-strong);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    line-height: 1;
+    color: transparent;
+  }
+  .pill.toggle.on .check {
+    border-color: var(--bg);
+    background: var(--bg);
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  /* Chip rows (price, vibes) */
+  .chip-row, .active-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .row-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-right: 0.25rem;
+  }
+  .row-label.applied { color: var(--forest-soft); }
+  .vibe-chip, .price-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.1s, background 0.1s, color 0.1s;
+  }
+  .vibe-chip:hover, .price-chip:hover { border-color: var(--rule-strong); }
+  .vibe-chip.on {
+    background: var(--terracotta);
+    color: var(--bg);
+    border-color: var(--terracotta);
+  }
+  .price-chip .symbol {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .price-chip .range {
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 400;
+  }
+  .price-chip.on {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+  .price-chip.on .range { color: rgba(255, 255, 255, 0.7); }
+  .vibe-chip input, .price-chip input { display: none; }
+
+  /* Active chips row */
+  .active-row {
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--rule);
+  }
+  .active-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border: 1px solid var(--ink);
+    background: var(--bg);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 0.25rem 0.375rem 0.25rem 0.75rem;
+    font-family: var(--sans);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .active-chip .x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--bg);
+    font-size: 0.625rem;
+    line-height: 1;
+  }
+  .clear-all {
+    color: var(--terracotta);
+    font-size: 0.75rem;
+    font-weight: 600;
     text-decoration: none;
-    font-size: 0.9rem;
-    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid var(--terracotta);
+    padding: 0.25rem 0;
+    margin-left: 0.25rem;
   }
-  .reset:hover { color: #000; text-decoration: underline; }
+
+  .apply-fallback {
+    margin-top: 0.75rem;
+    padding: 0.6rem 1.3rem;
+    background: var(--ink);
+    color: var(--bg);
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: var(--sans);
+    font-size: 0.875rem;
+  }
 </style>

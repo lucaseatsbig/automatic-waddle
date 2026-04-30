@@ -1,0 +1,588 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import RestaurantCard from '../../components/RestaurantCard.astro';
+import { getRestaurantBySlug, getSimilarByCuisine } from '../../lib/db';
+import { fetchPlacePhotos, placePhotoUrl, type PlacesPhoto } from '../../lib/places';
+
+const slug = Astro.params.slug;
+if (!slug) return Astro.redirect('/');
+
+const restaurant = await getRestaurantBySlug(env.DB, slug);
+if (!restaurant) {
+  return new Response('Not found', { status: 404 });
+}
+
+const apiKey = env.GOOGLE_MAPS_API_KEY ?? '';
+const placePhotosPromise: Promise<PlacesPhoto[]> = restaurant.place_id && apiKey
+  ? fetchPlacePhotos(restaurant.place_id, apiKey)
+  : Promise.resolve([]);
+
+const [similar, placePhotos] = await Promise.all([
+  restaurant.cuisine
+    ? getSimilarByCuisine(env.DB, restaurant.cuisine, restaurant.id, 4)
+    : Promise.resolve([]),
+  placePhotosPromise,
+]);
+
+const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
+
+const priceSymbol = restaurant.price_tier ? '$'.repeat(restaurant.price_tier) : null;
+const ratingFmt = restaurant.avg_overall != null ? restaurant.avg_overall.toFixed(1) : null;
+const visited = restaurant.visit_count > 0;
+
+// Hero image priority: Places photo → user cover photo → placeholder
+let heroSrc: string | null = null;
+let heroAlt = '';
+let heroAttribution: PlacesPhoto['authorAttributions'] | null = null;
+
+if (placePhotos.length > 0) {
+  heroSrc = placePhotoUrl(placePhotos[0].name, 1600);
+  heroAlt = restaurant.name;
+  heroAttribution = placePhotos[0].authorAttributions;
+}
+if (!heroSrc) {
+  for (const rv of restaurant.reviews) {
+    const cover = rv.photos.find((p) => p.is_cover) ?? rv.photos[0];
+    if (cover) {
+      heroSrc = `${photosBase}/${cover.r2_key}`;
+      heroAlt = cover.alt ?? restaurant.name;
+      break;
+    }
+  }
+}
+
+function formatDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatLongDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+---
+<BaseLayout title={`${restaurant.name} · Lucas Eats Big`}>
+  <main class="page">
+    <div class="back-link">
+      <a href="/">← All places</a>
+    </div>
+
+    <section class="hero" data-has-photo={heroSrc ? 'true' : 'false'}>
+      {heroSrc
+        ? <img src={heroSrc} alt={heroAlt} decoding="async" width="1600" height="640" />
+        : <div class="hero-placeholder" aria-hidden="true"></div>}
+    </section>
+    {heroAttribution && heroAttribution.length > 0 && (
+      <p class="photo-attribution">
+        Photo by{' '}
+        {heroAttribution.map((a, i) => (
+          <>
+            {i > 0 && ', '}
+            {a.uri
+              ? <a href={a.uri} target="_blank" rel="noopener">{a.displayName}</a>
+              : <span>{a.displayName}</span>}
+          </>
+        ))}
+        {' '}via Google Maps
+      </p>
+    )}
+
+    <section class="header-block">
+      <div class="info">
+        <h1>{restaurant.name}</h1>
+        {(restaurant.cuisine || restaurant.location) && (
+          <div class="primary-chips">
+            {restaurant.cuisine && (
+              <span class="chip-primary chip-cuisine">{restaurant.cuisine}</span>
+            )}
+            {restaurant.location && (
+              <span class="chip-primary chip-location">
+                <span class="pin" aria-hidden="true">●</span>{restaurant.location}
+              </span>
+            )}
+          </div>
+        )}
+        {restaurant.address && <p class="address">{restaurant.address}</p>}
+        {restaurant.tags.length > 0 && (
+          <div class="chips">
+            {restaurant.tags.map((t) => (
+              <span class={`chip chip-${t.category}`}>{t.label}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <aside class="rating-card">
+        {visited && ratingFmt ? (
+          <>
+            <div class="block-label">LUCAS RATING</div>
+            <div class="big-rating">{ratingFmt}<span class="denom">/10</span></div>
+            <div class="rating-sub">
+              {restaurant.visit_count === 1 ? '1 visit' : `across ${restaurant.visit_count} visits`}
+            </div>
+          </>
+        ) : (
+          <>
+            <div class="block-label">STATUS</div>
+            <div class="big-rating wishlist-status">Wishlist</div>
+            <div class="rating-sub">Haven't been yet</div>
+          </>
+        )}
+        <hr />
+        <div class="rating-meta">
+          <div>
+            <div class="block-label">PRICE</div>
+            <div class="meta-value">{priceSymbol ?? '–'}</div>
+          </div>
+          <div>
+            <div class="block-label">{visited ? 'LAST VISIT' : 'ADDED'}</div>
+            <div class="meta-value">{formatDate(restaurant.latest_visit_date) ?? '–'}</div>
+          </div>
+        </div>
+        {restaurant.maps_url && (
+          <a class="maps-btn" href={restaurant.maps_url} target="_blank" rel="noopener">
+            ↗ Open in Maps
+          </a>
+        )}
+        {restaurant.website_url && (
+          <a class="maps-btn website-btn" href={restaurant.website_url} target="_blank" rel="noopener">
+            ↗ Visit website
+          </a>
+        )}
+      </aside>
+    </section>
+
+    {visited && restaurant.reviews.length > 0 && (
+      <section class="visits">
+        <h2 class="section-head">{restaurant.reviews.length === 1 ? 'My visit' : 'My visits'}</h2>
+        {restaurant.reviews.map((rv) => (
+          <article class="visit">
+            <div class="visit-side">
+              {rv.meal_type && <div class="meal-type">{rv.meal_type.toUpperCase()}</div>}
+              {rv.visit_date && <div class="visit-date">{formatLongDate(rv.visit_date)}</div>}
+              {rv.rating_overall != null && (
+                <div class="visit-rating">
+                  {rv.rating_overall.toFixed(1)}<span class="denom">/10</span>
+                </div>
+              )}
+              {rv.would_return && <div class="would-return">✓ would return</div>}
+            </div>
+            <div class="visit-body">
+              {rv.commentary && <p class="commentary">{rv.commentary}</p>}
+              {rv.standout_items.length > 0 && (
+                <div class="standouts">
+                  <div class="standouts-label">STANDOUT DISHES</div>
+                  <div class="standouts-list">
+                    {rv.standout_items.map((it) => (
+                      <span class="standout">
+                        <span class="star" aria-hidden="true">★</span> {it.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {rv.photos.length > 0 && (
+                <div class="visit-photos">
+                  {rv.photos.map((p) => (
+                    <div class="photo-tile">
+                      <img src={`${photosBase}/${p.r2_key}`} alt={p.alt ?? ''} loading="lazy" decoding="async" width="400" height="400" />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {rv.instagram_url && (
+                <a class="ig-link" href={rv.instagram_url} target="_blank" rel="noopener">
+                  View on Instagram ↗
+                </a>
+              )}
+            </div>
+          </article>
+        ))}
+      </section>
+    )}
+
+    {!visited && restaurant.wishlist_note && (
+      <section class="wishlist-block">
+        <h2 class="section-head">Why it's on the list</h2>
+        <p>{restaurant.wishlist_note}</p>
+      </section>
+    )}
+
+    {similar.length > 0 && restaurant.cuisine && (
+      <section class="similar">
+        <h2 class="section-head">
+          More {restaurant.cuisine} I love
+        </h2>
+        <div class="similar-grid">
+          {similar.map((r) => (
+            <RestaurantCard restaurant={r} photosBase={photosBase} />
+          ))}
+        </div>
+      </section>
+    )}
+  </main>
+</BaseLayout>
+
+<style>
+  .page {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 4rem;
+  }
+  .back-link {
+    margin-bottom: 1rem;
+  }
+  .back-link a {
+    font-family: var(--sans);
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.875rem;
+  }
+  .back-link a:hover { color: var(--ink); }
+
+  /* Hero */
+  .hero {
+    aspect-ratio: 5 / 2;
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--paper);
+  }
+  .hero img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .hero-placeholder {
+    width: 100%;
+    height: 100%;
+    background:
+      repeating-linear-gradient(
+        135deg,
+        var(--paper) 0px,
+        var(--paper) 14px,
+        rgba(26, 40, 32, 0.04) 14px,
+        rgba(26, 40, 32, 0.04) 28px
+      );
+  }
+
+  /* Header block */
+  .header-block {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+  @media (min-width: 760px) {
+    .header-block {
+      grid-template-columns: 1fr 280px;
+      align-items: start;
+    }
+  }
+  .info h1 {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: clamp(2.4rem, 7vw, 3.6rem);
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+    line-height: 1.02;
+  }
+  .primary-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.1rem;
+  }
+  .chip-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.95rem;
+    border-radius: 999px;
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+  }
+  .chip-cuisine {
+    background: rgba(184, 84, 58, 0.08);
+    border-color: rgba(184, 84, 58, 0.2);
+    color: var(--terracotta);
+  }
+  .chip-location {
+    background: rgba(45, 69, 56, 0.08);
+    border-color: rgba(45, 69, 56, 0.2);
+    color: var(--forest-soft);
+  }
+  .chip-location .pin {
+    color: var(--forest-soft);
+    font-size: 0.55rem;
+    line-height: 1;
+    transform: translateY(-0.5px);
+  }
+  .address {
+    font-family: var(--sans);
+    color: var(--muted);
+    margin: 0.9rem 0 0;
+    font-size: 0.95rem;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 1.1rem;
+  }
+  .chip {
+    font-family: var(--sans);
+    font-size: 0.8125rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+  }
+  .chip-vibe { background: rgba(184, 84, 58, 0.08); border-color: rgba(184, 84, 58, 0.2); color: var(--terracotta); }
+  .chip-dietary { background: rgba(45, 69, 56, 0.08); border-color: rgba(45, 69, 56, 0.2); color: var(--forest-soft); }
+
+  /* Rating card */
+  .rating-card {
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 1.25rem 1.35rem;
+    background: var(--paper);
+  }
+  .block-label {
+    font-family: var(--sans);
+    color: var(--muted);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .big-rating {
+    font-family: var(--serif);
+    font-size: 2.5rem;
+    font-weight: 500;
+    color: var(--terracotta);
+    margin-top: 0.3rem;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .big-rating.wishlist-status {
+    color: var(--forest-soft);
+    font-size: 1.6rem;
+    font-style: italic;
+  }
+  .denom {
+    font-size: 0.875rem;
+    color: var(--muted);
+    margin-left: 0.1rem;
+  }
+  .rating-sub {
+    font-family: var(--sans);
+    color: var(--muted);
+    font-size: 0.8125rem;
+    margin-top: 0.3rem;
+  }
+  .rating-card hr {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 1rem 0;
+  }
+  .rating-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .meta-value {
+    font-family: var(--sans);
+    color: var(--ink);
+    font-weight: 600;
+    margin-top: 0.25rem;
+    font-size: 0.9375rem;
+  }
+  .maps-btn {
+    display: block;
+    margin-top: 1rem;
+    text-align: center;
+    background: var(--ink);
+    color: var(--bg);
+    text-decoration: none;
+    padding: 0.7rem 1rem;
+    border-radius: 999px;
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background 0.1s;
+  }
+  .maps-btn:hover { background: var(--forest-soft); }
+  .maps-btn.website-btn {
+    margin-top: 0.5rem;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--ink);
+  }
+  .maps-btn.website-btn:hover {
+    background: var(--ink);
+    color: var(--bg);
+  }
+
+  /* Section head */
+  .section-head {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.5rem;
+    color: var(--ink);
+    margin: 3rem 0 1.25rem;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+  }
+
+  /* Visits */
+  .visits { margin-top: 1rem; }
+  .visit {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 1.5rem 0;
+    border-top: 1px solid var(--rule);
+  }
+  @media (min-width: 700px) {
+    .visit {
+      grid-template-columns: 160px 1fr;
+      gap: 1.75rem;
+    }
+  }
+  .visit-side {
+    color: var(--muted);
+  }
+  .meal-type {
+    font-family: var(--sans);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .visit-date {
+    font-family: var(--sans);
+    font-size: 0.9375rem;
+    margin-top: 0.3rem;
+    color: var(--ink);
+  }
+  .visit-rating {
+    font-family: var(--serif);
+    font-size: 1.625rem;
+    font-weight: 500;
+    color: var(--terracotta);
+    margin-top: 0.6rem;
+    letter-spacing: -0.01em;
+  }
+  .would-return {
+    font-family: var(--sans);
+    color: var(--forest-soft);
+    font-size: 0.8125rem;
+    margin-top: 0.4rem;
+  }
+  .commentary {
+    font-family: var(--serif);
+    margin: 0;
+    line-height: 1.6;
+    color: var(--ink);
+    font-size: 1.0625rem;
+    white-space: pre-wrap;
+  }
+  .standouts {
+    margin-top: 1.25rem;
+  }
+  .standouts-label {
+    font-family: var(--sans);
+    color: var(--muted);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+  }
+  .standouts-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .standout {
+    font-family: var(--sans);
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+  }
+  .star { color: var(--terracotta); }
+  .visit-photos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.6rem;
+    margin-top: 1rem;
+  }
+  .photo-tile {
+    aspect-ratio: 1 / 1;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--paper);
+  }
+  .photo-tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .ig-link {
+    display: inline-block;
+    margin-top: 0.85rem;
+    font-family: var(--sans);
+    color: var(--terracotta);
+    font-size: 0.875rem;
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+  }
+  .ig-link:hover { background: rgba(184, 84, 58, 0.08); }
+
+  /* Wishlist block */
+  .wishlist-block p {
+    font-family: var(--serif);
+    color: var(--ink);
+    opacity: 0.8;
+    font-style: italic;
+    line-height: 1.6;
+    font-size: 1.0625rem;
+    max-width: 60ch;
+  }
+
+  /* Photo attribution */
+  .photo-attribution {
+    font-family: var(--sans);
+    color: var(--muted);
+    font-size: 0.75rem;
+    margin: 0.5rem 0 0;
+    text-align: right;
+  }
+  .photo-attribution a {
+    color: var(--muted);
+    text-decoration: underline;
+  }
+
+
+  /* Similar */
+  .similar { margin-top: 3rem; }
+  .similar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 1rem;
+  }
+</style>

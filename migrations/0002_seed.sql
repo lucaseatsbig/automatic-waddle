@@ -25,8 +25,6 @@ INSERT INTO locations (slug, name) VALUES
 INSERT INTO tags (slug, label, category) VALUES
   ('date',        'Date spot',          'vibe'),
   ('upscale',     'Upscale',            'vibe'),
-  ('large-group', 'Large group',        'vibe'),
-  ('small-group', 'Small group',        'vibe'),
   ('loud',        'Loud',               'vibe'),
   ('quiet',       'Quiet',              'vibe'),
   ('music',       'Live music',         'vibe'),
@@ -41,9 +39,10 @@ INSERT INTO tags (slug, label, category) VALUES
   ('halal',       'Halal',              'dietary'),
   ('kosher',      'Kosher',             'dietary'),
   ('nut-free',    'Nut-free',           'dietary'),
-  ('bookings',    'Takes bookings',     'other'),
-  ('walk-in',     'Walk-in only',       'other'),
-  ('late-night',  'Open late',          'other');
+  ('bookings',              'Takes Bookings',         'other'),
+  ('walk-in',               'Walk-In',                'other'),
+  ('late-night',            'Open Late',              'other'),
+  ('good-for-large-groups', 'Good for Large Groups',  'other');
 
 -- Demo restaurants (2 visited, 1 wishlist). Delete these once you have real data.
 INSERT INTO restaurants (slug, name, cuisine, location_id, address, price_tier, website_url, menu_url, wishlist_note) VALUES
@@ -52,7 +51,6 @@ INSERT INTO restaurants (slug, name, cuisine, location_id, address, price_tier, 
   ('saint-peter', 'Saint Peter',       'Seafood',           (SELECT id FROM locations WHERE slug='paddington'),   'The Grand National, 161 Underwood St, Paddington', 5, 'https://saintpeter.com.au',      NULL,                                'Heard the whole-fish butchery is a religious experience. Want to try the omakase bar.');
 
 INSERT INTO restaurant_tags (restaurant_id, tag_id) VALUES
-  ((SELECT id FROM restaurants WHERE slug='chaco-bar'),   (SELECT id FROM tags WHERE slug='small-group')),
   ((SELECT id FROM restaurants WHERE slug='chaco-bar'),   (SELECT id FROM tags WHERE slug='casual')),
   ((SELECT id FROM restaurants WHERE slug='chaco-bar'),   (SELECT id FROM tags WHERE slug='date')),
   ((SELECT id FROM restaurants WHERE slug='ester'),       (SELECT id FROM tags WHERE slug='upscale')),

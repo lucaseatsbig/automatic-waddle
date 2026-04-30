@@ -1,98 +1,219 @@
 ---
 import { env } from 'cloudflare:workers';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import FilterBar from '../components/FilterBar.astro';
-import RestaurantCard from '../components/RestaurantCard.astro';
-import { getCuisines, getLocations, getTags, searchRestaurants } from '../lib/db';
-import type { Filters, MealType } from '../lib/types';
+import Masthead from '../components/Masthead.astro';
+import HomeListCard from '../components/HomeListCard.astro';
+import { getFeaturedRecent, getWishlistPreview, searchRestaurants } from '../lib/db';
 
-const sp = Astro.url.searchParams;
-
-const validMeals: MealType[] = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks'];
-const rawMeal = sp.get('meal');
-const meal: MealType | undefined = rawMeal && (validMeals as string[]).includes(rawMeal)
-  ? (rawMeal as MealType)
-  : undefined;
-
-const rawVisited = sp.get('visited');
-const visited: 'yes' | 'no' | undefined =
-  rawVisited === 'yes' ? 'yes' : rawVisited === 'no' ? 'no' : undefined;
-
-const filters: Filters = {
-  q: sp.get('q')?.trim() || undefined,
-  cuisine: sp.get('cuisine') || undefined,
-  meal,
-  location: sp.get('location') || undefined,
-  visited,
-  price: sp.getAll('price').map(Number).filter((n) => Number.isFinite(n) && n >= 1 && n <= 5),
-  vibes: sp.getAll('vibes'),
-  dietary: sp.getAll('dietary'),
-};
-
-const [restaurants, locations, tags, cuisines] = await Promise.all([
-  searchRestaurants(env.DB, filters),
-  getLocations(env.DB),
-  getTags(env.DB),
-  getCuisines(env.DB),
+const [featuredPool, wishlistPool, allVisited] = await Promise.all([
+  getFeaturedRecent(env.DB, 10),
+  getWishlistPreview(env.DB, 20),
+  searchRestaurants(env.DB, { visited: 'yes' }),
 ]);
 
+// Pick N items maximising variety on `key` — first pass takes one per unseen
+// key, second pass fills remaining slots in original order.
+function pickVariety<T>(pool: T[], n: number, key: (item: T) => string | null): T[] {
+  const result: T[] = [];
+  const seen = new Set<string>();
+  for (const item of pool) {
+    if (result.length >= n) break;
+    const k = key(item);
+    if (k && seen.has(k)) continue;
+    result.push(item);
+    if (k) seen.add(k);
+  }
+  for (const item of pool) {
+    if (result.length >= n) break;
+    if (!result.includes(item)) result.push(item);
+  }
+  return result;
+}
+
+const recentList = featuredPool.slice(0, 10);
+const wishlist = pickVariety(wishlistPool, 8, (w) => w.cuisine);
+
+const visitedTotal = allVisited.length;
 const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
 ---
-<BaseLayout title="Lucas Eats Big">
-  <header class="site-header">
-    <h1>Lucas Eats Big</h1>
-    <p>A running log of where I eat in Sydney — and where I'd still like to.</p>
-  </header>
+<BaseLayout title="Lucas Eats Big · everywhere I've eaten in Sydney">
+  <Masthead active="home" />
 
-  <FilterBar filters={filters} locations={locations} tags={tags} cuisines={cuisines} />
-
-  <section class="results">
-    <p class="count">
-      {restaurants.length} {restaurants.length === 1 ? 'place' : 'places'}
+  <section class="hero">
+    <p class="kicker">SYDNEY · UPDATED WEEKLY</p>
+    <h1>
+      Hi, I'm Lucas.<br />
+      This is <em>everywhere I've eaten</em><br />
+      and what I think of it.
+    </h1>
+    <p class="lede">
+      A running list of Sydney spots I've been to, ranked honestly. Friends keep asking me where to eat, so I made this for them.
+      Browse by neighbourhood, vibe, or rating, or jump to <a href="/all">the full database</a>.
     </p>
-    <div class="grid">
-      {restaurants.map((r) => (
-        <RestaurantCard restaurant={r} photosBase={photosBase} />
-      ))}
-    </div>
-    {restaurants.length === 0 && (
-      <p class="empty">No places match these filters. Try clearing some.</p>
-    )}
   </section>
+
+  {recentList.length > 0 && (
+    <section class="featured-section">
+      <header class="section-head">
+        <h2>Best places I've been to lately</h2>
+        <span class="section-meta">{visitedTotal} places · <a href="/all">see the list</a></span>
+      </header>
+      <div class="recent-list">
+        {recentList.map((r) => (
+          <HomeListCard restaurant={r} photosBase={photosBase} />
+        ))}
+      </div>
+      {visitedTotal > recentList.length && (
+        <p class="see-more"><a href="/all?visited=yes">See all {visitedTotal} visited →</a></p>
+      )}
+    </section>
+  )}
+
+  {wishlist.length > 0 && (
+    <section class="wishlist-section">
+      <header class="section-head">
+        <h2>On the list</h2>
+        <span class="section-meta">places I haven't been yet · <a href="/all?visited=no">see all</a></span>
+      </header>
+      <div class="wishlist-list">
+        {wishlist.map((w) => (
+          <HomeListCard restaurant={w} photosBase={photosBase} />
+        ))}
+      </div>
+    </section>
+  )}
+
+  <footer class="site-footer">
+    <p>© {new Date().getFullYear()} Lucas Eats Big · A personal list. Bias included.</p>
+  </footer>
 </BaseLayout>
 
 <style>
-  .site-header {
-    text-align: center;
-    padding: 3rem 1rem 1.5rem;
-  }
-  .site-header h1 {
-    font-size: 2.5rem;
-    margin: 0;
-    letter-spacing: -0.02em;
-  }
-  .site-header p {
-    color: #666;
-    margin: 0.5rem 0 0;
-  }
-  .results {
-    padding: 2rem 1rem 4rem;
-    max-width: 1200px;
+  /* Hero */
+  .hero {
+    max-width: 1280px;
     margin: 0 auto;
+    padding: clamp(2.5rem, 8vw, 4.5rem) 1.5rem 2rem;
   }
-  .count {
-    color: #666;
-    margin: 0 0 1rem;
-    font-size: 0.9rem;
+  @media (max-width: 600px) {
+    .hero { padding-left: 1rem; padding-right: 1rem; }
+    section[class$='-section'] { padding: 2rem 1rem 1rem; }
   }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.25rem;
+  .kicker {
+    font-family: var(--sans);
+    font-size: 0.6875rem;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    font-weight: 600;
+    margin: 0 0 1.5rem;
+    text-transform: uppercase;
   }
-  .empty {
+  .kicker::before {
+    content: '';
+    display: inline-block;
+    width: 32px;
+    border-top: 2px solid var(--terracotta);
+    vertical-align: middle;
+    margin-right: 0.6rem;
+  }
+  .hero h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.4rem, 5vw, 4rem);
+    font-weight: 500;
+    line-height: 1.05;
+    color: var(--ink);
+    margin: 0;
+    letter-spacing: -0.025em;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--terracotta);
+    font-weight: 500;
+  }
+  .lede {
+    margin: 1.5rem 0 0;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.6;
+    max-width: 56ch;
+  }
+  .lede a {
+    color: var(--terracotta);
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+  }
+  .lede a:hover { background: rgba(184, 84, 58, 0.08); }
+
+  /* Sections */
+  section[class$='-section'] {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 1rem;
+  }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .section-head h2 {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.625rem;
+    color: var(--ink);
+    margin: 0;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+  }
+  .section-meta {
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .section-meta a {
+    color: var(--terracotta);
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+  }
+  .section-meta a:hover { background: rgba(184, 84, 58, 0.08); }
+
+  /* Recent list */
+  .recent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .see-more {
     text-align: center;
-    color: #888;
-    padding: 3rem 0;
+    margin: 1.25rem 0 0;
+    font-size: 0.875rem;
+  }
+  .see-more a {
+    color: var(--terracotta);
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+  }
+
+  /* Wishlist */
+  .wishlist-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  /* Footer */
+  .site-footer {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 4rem 1.5rem 2.5rem;
+    border-top: 1px solid var(--rule);
+    margin-top: 3rem;
+  }
+  .site-footer p {
+    color: var(--muted);
+    font-size: 0.8125rem;
+    margin: 0;
+    text-align: center;
   }
 </style>

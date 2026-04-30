@@ -1,5 +1,6 @@
 ---
 import type { RestaurantCardData } from '../lib/types';
+import { placePhotoUrl } from '../lib/places';
 
 interface Props {
   restaurant: RestaurantCardData;
@@ -8,40 +9,51 @@ interface Props {
 const { restaurant: r, photosBase } = Astro.props;
 
 const priceSymbol = r.price_tier ? '$'.repeat(r.price_tier) : '';
-const coverUrl = r.cover_r2_key && photosBase
+const uploadedCover = r.cover_r2_key && photosBase
   ? `${photosBase}/${r.cover_r2_key}`
   : null;
+const placesCover = r.hero_photo_name
+  ? placePhotoUrl(r.hero_photo_name, 400)
+  : null;
+const coverUrl = uploadedCover ?? placesCover;
 const ratingFmt = r.avg_overall != null ? r.avg_overall.toFixed(1) : null;
+const visitYear = r.latest_visit_date ? new Date(r.latest_visit_date).getFullYear() : null;
+const mealLabel = r.latest_meal_type ? r.latest_meal_type.toUpperCase() : (r.visited ? 'VISIT' : null);
 ---
 <a href={`/restaurants/${r.slug}`} class={`card ${r.visited ? '' : 'wishlist'}`}>
   <div class="photo">
     {coverUrl
-      ? <img src={coverUrl} alt="" loading="lazy" />
-      : <div class="placeholder">{r.visited ? 'No photo yet' : 'Wishlist'}</div>}
-    {ratingFmt && <span class="rating">{ratingFmt}</span>}
+      ? <img src={coverUrl} alt="" loading="lazy" decoding="async" width="800" height="600" />
+      : <div class="placeholder" aria-hidden="true">{r.visited ? '' : 'WISHLIST'}</div>}
+    <div class="overlay">
+      {mealLabel && (
+        <div class="badge">{mealLabel}{visitYear ? ` · ${visitYear}` : ''}</div>
+      )}
+      {ratingFmt && (
+        <div class="rating">
+          <span class="rating-num">{ratingFmt}</span>
+          <span class="rating-denom">/10</span>
+        </div>
+      )}
+    </div>
   </div>
   <div class="body">
-    <h3>{r.name}</h3>
-    <p class="meta">
-      {r.cuisine && <span>{r.cuisine}</span>}
-      {r.location && <span class="dot">·</span>}
-      {r.location && <span>{r.location}</span>}
-      {priceSymbol && <span class="dot">·</span>}
-      {priceSymbol && <span class="price">{priceSymbol}</span>}
-    </p>
-    {r.visited ? (
-      <p class="sub">
-        Last visit {r.latest_visit_date}
-        {r.review_count > 1 && <span class="visits"> · {r.review_count} visits</span>}
-      </p>
-    ) : r.wishlist_note ? (
-      <p class="sub wishlist-note">{r.wishlist_note}</p>
-    ) : (
-      <p class="sub wishlist-note">Haven't been yet.</p>
+    <h3 class="name">{r.name}</h3>
+    {(r.cuisine || r.location) && (
+      <div class="primary-chips">
+        {r.cuisine && <span class="chip-primary chip-cuisine">{r.cuisine}</span>}
+        {r.location && (
+          <span class="chip-primary chip-location">
+            <span class="pin" aria-hidden="true">●</span>{r.location}
+          </span>
+        )}
+        {priceSymbol && <span class="price">{priceSymbol}</span>}
+      </div>
     )}
+    {!r.visited && r.wishlist_note && <p class="wishlist-note">{r.wishlist_note}</p>}
     {r.tags.length > 0 && (
       <div class="chips">
-        {r.tags.slice(0, 4).map((t) => (
+        {r.tags.slice(0, 3).map((t) => (
           <span class={`chip chip-${t.category}`}>{t.label}</span>
         ))}
       </div>
@@ -54,89 +66,190 @@ const ratingFmt = r.avg_overall != null ? r.avg_overall.toFixed(1) : null;
     display: flex;
     flex-direction: column;
     text-decoration: none;
-    background: white;
-    border-radius: 12px;
+    color: inherit;
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 1px 2px rgba(26, 40, 32, 0.04);
+    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
   }
   .card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 20px rgba(26, 40, 32, 0.1);
+    border-color: var(--rule-strong);
   }
   .card.wishlist {
-    border: 1px dashed #d0c8b8;
-    background: #fdfcf7;
+    border: 1px dashed var(--rule-strong);
+    background: var(--paper);
   }
 
+  /* Photo */
   .photo {
     position: relative;
+    width: 100%;
     aspect-ratio: 4 / 3;
-    background: #efece4;
+    flex-shrink: 0;
+    background: var(--paper);
+    overflow: hidden;
   }
   .photo img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
   }
   .placeholder {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
-    color: #a8a08a;
+    font-family: var(--sans);
+    color: var(--muted);
     font-size: 0.75rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--paper) 0,
+      var(--paper) 16px,
+      rgba(26, 40, 32, 0.04) 16px,
+      rgba(26, 40, 32, 0.04) 32px
+    );
   }
-  .rating {
+  .overlay {
     position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    background: rgba(0, 0, 0, 0.82);
-    color: white;
+    inset: 0;
+    padding: 0.7rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0) 65%, rgba(0,0,0,0.3) 100%);
+    pointer-events: none;
+  }
+  .badge {
+    align-self: flex-start;
+    font-family: var(--sans);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95);
+    background: rgba(0, 0, 0, 0.4);
     padding: 0.25rem 0.55rem;
     border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+    backdrop-filter: blur(4px);
   }
+  .rating {
+    align-self: flex-end;
+    background: var(--bg);
+    color: var(--terracotta);
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    font-family: var(--serif);
+    line-height: 1;
+  }
+  .rating-num { font-size: 1rem; font-weight: 600; }
+  .rating-denom { font-size: 0.65rem; color: var(--muted); margin-left: 0.1rem; }
 
-  .body { padding: 0.9rem 1rem 1rem; }
-  h3 { margin: 0; font-size: 1.05rem; line-height: 1.3; }
-  .meta {
-    color: #777;
-    font-size: 0.85rem;
-    margin: 0.35rem 0 0;
+  /* Body */
+  .body {
+    padding: 0.85rem 0.95rem 0.95rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .name {
+    font-family: var(--serif);
+    font-size: 1.15rem;
+    font-weight: 500;
+    margin: 0;
+    color: var(--ink);
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+  }
+  .primary-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
+    gap: 0.35rem;
+    align-items: center;
   }
-  .dot { color: #bbb; }
-  .price { font-weight: 600; color: #555; }
-  .sub {
-    color: #555;
-    font-size: 0.85rem;
-    margin: 0.5rem 0 0;
+  .chip-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+  }
+  .chip-cuisine {
+    background: rgba(184, 84, 58, 0.08);
+    border-color: rgba(184, 84, 58, 0.2);
+    color: var(--terracotta);
+  }
+  .chip-location {
+    background: rgba(45, 69, 56, 0.08);
+    border-color: rgba(45, 69, 56, 0.2);
+    color: var(--forest-soft);
+  }
+  .chip-location .pin {
+    color: var(--forest-soft);
+    font-size: 0.5rem;
+    line-height: 1;
+    transform: translateY(-0.5px);
+  }
+  .price {
+    font-family: var(--sans);
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-left: 0.15rem;
   }
   .wishlist-note {
+    font-family: var(--serif);
     font-style: italic;
-    color: #7a6f55;
+    color: var(--ink);
+    opacity: 0.7;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    margin: 0;
   }
-  .visits { color: #888; }
+
+  /* Tag chips (vibe/dietary/other) */
   .chips {
     display: flex;
     flex-wrap: wrap;
     gap: 0.3rem;
-    margin-top: 0.65rem;
+    margin-top: auto;
   }
   .chip {
-    font-size: 0.7rem;
-    padding: 0.2rem 0.55rem;
+    font-family: var(--sans);
+    font-size: 0.6875rem;
+    padding: 0.18rem 0.55rem;
     border-radius: 999px;
-    background: #f0ede6;
-    color: #555;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    color: var(--ink);
   }
-  .chip-vibe    { background: #e8f0ff; color: #2a5aa3; }
-  .chip-dietary { background: #e8f5e9; color: #2e7d3e; }
+  .chip-vibe { background: rgba(184, 84, 58, 0.08); border-color: rgba(184, 84, 58, 0.2); color: var(--terracotta); }
+  .chip-dietary { background: rgba(45, 69, 56, 0.08); border-color: rgba(45, 69, 56, 0.2); color: var(--forest-soft); }
+
+  @media (max-width: 600px) {
+    .photo { aspect-ratio: 3 / 2; }
+    .body { padding: 0.65rem 0.75rem 0.75rem; gap: 0.4rem; }
+    .name { font-size: 1rem; }
+    .overlay { padding: 0.55rem 0.7rem; }
+    .badge { font-size: 0.55rem; padding: 0.2rem 0.45rem; }
+    .rating-num { font-size: 0.9rem; }
+    .rating-denom { font-size: 0.6rem; }
+    .chip-primary { font-size: 0.68rem; padding: 0.18rem 0.5rem; }
+  }
+  @media (max-width: 480px) {
+    .chips { display: none; }
+  }
 </style>

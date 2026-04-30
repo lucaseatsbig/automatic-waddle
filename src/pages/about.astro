@@ -1,0 +1,61 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Masthead from '../components/Masthead.astro';
+---
+<BaseLayout title="About · Lucas Eats Big" description="Hi, I'm Lucas. This is everywhere I've eaten in Sydney.">
+  <Masthead active="about" />
+
+  <main class="about">
+    <h1>Hi <span class="wave" aria-hidden="true">👋</span></h1>
+    <div class="prose">
+      <p>I'm Lucas, I live in Sydney, and I think about food more than is healthy.</p>
+      <p>This site is a running record of every restaurant I've been to that I had an opinion about. It started as a Notion database that got too big, then a spreadsheet, and finally something I could send to friends without making them sign up for anything.</p>
+      <p>Every entry is mine. Every rating is honest. I pay for everything I eat. No comps, no PR dinners, no agenda. If something's on the wishlist it's because I want to go; if it's rated it's because I went.</p>
+      <p class="muted">
+        Got a place I should try?
+        <a href="https://instagram.com/lucaseatsbig" target="_blank" rel="noopener noreferrer">tell me</a>.
+      </p>
+    </div>
+  </main>
+</BaseLayout>
+
+<style>
+  .about {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: clamp(3rem, 8vw, 4rem) clamp(1.25rem, 4vw, 2.5rem) 5rem;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(3rem, 8vw, 4.5rem);
+    line-height: 0.95;
+    letter-spacing: -0.035em;
+    font-weight: 500;
+    margin: 0 0 2rem;
+    color: var(--ink);
+  }
+  .wave {
+    font-style: italic;
+    color: var(--terracotta);
+    display: inline-block;
+  }
+  .prose {
+    font-family: var(--serif);
+    font-size: clamp(1.1rem, 2vw, 1.375rem);
+    line-height: 1.6;
+    color: var(--ink);
+    text-wrap: pretty;
+  }
+  .prose p { margin: 0 0 1rem; }
+  .prose .muted {
+    color: var(--muted);
+    font-style: italic;
+    margin-top: 1.5rem;
+  }
+  .prose a {
+    color: var(--terracotta);
+    border-bottom: 1px solid var(--terracotta);
+    text-decoration: none;
+  }
+  .prose a:hover { background: rgba(184, 84, 58, 0.08); }
+</style>

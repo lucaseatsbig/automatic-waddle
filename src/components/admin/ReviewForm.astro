@@ -21,7 +21,7 @@ const meals = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'dr
     </label>
 
     <label class="field">
-      <span>Meal</span>
+      <span>Meal type</span>
       <select name="meal_type">
         <option value="">—</option>
         {meals.map((m) => (
@@ -37,10 +37,6 @@ const meals = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'dr
     <legend>Ratings (0–10, in steps of 0.5)</legend>
     <div class="ratings-grid">
       <RatingSelect name="rating_overall" label="Overall" value={r?.rating_overall ?? null} required />
-      <RatingSelect name="rating_food"    label="Food"    value={r?.rating_food    ?? null} />
-      <RatingSelect name="rating_vibe"    label="Vibe"    value={r?.rating_vibe    ?? null} />
-      <RatingSelect name="rating_service" label="Service" value={r?.rating_service ?? null} />
-      <RatingSelect name="rating_value"   label="Value"   value={r?.rating_value   ?? null} />
       <RatingSelect name="rating_size"    label="Size"    value={r?.rating_size    ?? null} />
     </div>
     <p class="hint">Size is relative to the category (burger vs other burgers). 10 = hard to finish, 1 = barely a snack.</p>

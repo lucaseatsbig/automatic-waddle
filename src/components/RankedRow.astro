@@ -1,0 +1,118 @@
+---
+import type { RestaurantCardData } from '../lib/types';
+
+interface Props {
+  restaurant: RestaurantCardData;
+  rank: number;
+}
+const { restaurant: r, rank } = Astro.props;
+
+const palette = ['#5a6e4f', '#c04b1f', '#a13c2e', '#3f5e4d', '#8a4a3a', '#6b7355', '#b3402a', '#4a5d44'];
+const swatch = palette[rank % palette.length];
+
+const ratingFmt = r.avg_overall != null ? r.avg_overall.toFixed(1) : null;
+const priceSymbol = r.price_tier ? '$'.repeat(r.price_tier) : '';
+
+function timeAgo(iso: string | null): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const days = Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24));
+  if (days < 1) return 'today';
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  const yrs = Math.floor(days / 365);
+  return yrs === 1 ? '1yr ago' : `${yrs}yrs ago`;
+}
+---
+<a href={`/restaurants/${r.slug}`} class="row">
+  <div class="swatch" style={`background:${swatch}`} aria-hidden="true"></div>
+  <div class="lead">
+    <span class="name">{r.name}</span>
+    {priceSymbol && <span class="price">{priceSymbol}</span>}
+    {r.cuisine && <span class="cuisine">{r.cuisine}</span>}
+    {r.location && <span class="location">{r.location}</span>}
+  </div>
+  <div class="tags">
+    {r.tags.slice(0, 2).map((t) => (
+      <span class="chip">{t.label.toLowerCase()}</span>
+    ))}
+  </div>
+  <div class="when">{timeAgo(r.latest_visit_date) ?? '—'}</div>
+  <div class="rating">
+    {ratingFmt ? <><span class="num">{ratingFmt}</span><span class="denom">/10</span></> : '—'}
+  </div>
+</a>
+
+<style>
+  .row {
+    display: grid;
+    grid-template-columns: 28px minmax(220px, 2fr) minmax(140px, 1.5fr) 80px 70px;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 0.5rem;
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px solid #ebe6d6;
+    transition: background 0.1s;
+  }
+  .row:hover { background: rgba(0,0,0,0.025); }
+  .swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+  }
+  .lead {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    min-width: 0;
+  }
+  .name {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 1.05rem;
+    color: #1f2a20;
+  }
+  .price { color: #8a8266; font-size: 0.85rem; font-weight: 600; }
+  .cuisine, .location {
+    color: #6a6a6a;
+    font-size: 0.85rem;
+  }
+  .cuisine::before { content: '· '; color: #c4bfaf; }
+  .location::before { content: '· '; color: #c4bfaf; }
+  .tags {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 0.7rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 999px;
+    background: #efece4;
+    color: #4a4a4a;
+  }
+  .when {
+    color: #8a8266;
+    font-size: 0.85rem;
+    text-align: right;
+  }
+  .rating {
+    text-align: right;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    color: #b3402a;
+    line-height: 1;
+  }
+  .rating .num { font-size: 1.1rem; font-weight: 600; }
+  .rating .denom { font-size: 0.75rem; color: #8a8266; margin-left: 0.1rem; }
+
+  @media (max-width: 720px) {
+    .row {
+      grid-template-columns: 24px 1fr auto;
+      gap: 0.7rem;
+    }
+    .tags, .when { display: none; }
+  }
+</style>

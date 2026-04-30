@@ -154,7 +154,7 @@ const hasMapsKey = googleMapsKey.length > 0;
         <p class="hint">Leave blank if you don't remember.</p>
       </label>
       <label class="field">
-        <span>Meal</span>
+        <span>Meal type</span>
         <select name="meal_type">
           <option value="">—</option>
           {meals.map((m) => (
@@ -168,10 +168,6 @@ const hasMapsKey = googleMapsKey.length > 0;
       <legend>Ratings (0–10, in steps of 0.5)</legend>
       <div class="ratings-grid">
         <RatingSelect name="rating_overall" label="Overall" required />
-        <RatingSelect name="rating_food"    label="Food" />
-        <RatingSelect name="rating_vibe"    label="Vibe" />
-        <RatingSelect name="rating_service" label="Service" />
-        <RatingSelect name="rating_value"   label="Value" />
         <RatingSelect name="rating_size"    label="Size" />
       </div>
       <p class="hint">Size is relative to the category. 10 = hard to finish, 1 = barely a snack.</p>

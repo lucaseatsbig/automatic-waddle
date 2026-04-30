@@ -10,3 +10,6 @@ database_id = "e71c80ba-a90b-4ac5-b474-f49a4fac372d"
 [[r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "lucaseats-photos"
+
+[vars]
+PUBLIC_PHOTOS_URL = "https://photos.lucaseatsbig.com"

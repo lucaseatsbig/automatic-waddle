@@ -1,0 +1,85 @@
+---
+import type { RestaurantCardData } from '../lib/types';
+
+interface Props {
+  restaurant: RestaurantCardData;
+  colorIndex?: number;
+}
+const { restaurant: r, colorIndex = 0 } = Astro.props;
+
+const palette = ['#5a6e4f', '#c04b1f', '#a13c2e', '#3f5e4d'];
+const swatch = palette[colorIndex % palette.length];
+---
+<a href={`/restaurants/${r.slug}`} class="card">
+  <div class="swatch" style={`background:${swatch}`}>
+    <span class="badge">ON THE LIST</span>
+  </div>
+  <div class="body">
+    <h4 class="name">{r.name}</h4>
+    {(r.cuisine || r.location) && (
+      <p class="meta">
+        {r.cuisine}
+        {r.cuisine && r.location && ' · '}
+        {r.location}
+      </p>
+    )}
+    {r.wishlist_note && <p class="note">{r.wishlist_note}</p>}
+  </div>
+</a>
+
+<style>
+  .card {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    text-decoration: none;
+    color: inherit;
+    border: 1px dashed #d0c8b8;
+    border-radius: 4px;
+    background: #fdfcf7;
+    transition: border-color 0.1s, background 0.1s;
+  }
+  .card:hover { border-color: #8a8266; background: #fbf6e9; }
+  .swatch {
+    flex-shrink: 0;
+    width: 64px;
+    height: 64px;
+    border-radius: 3px;
+    background-image: repeating-linear-gradient(
+      135deg, transparent 0, transparent 8px,
+      rgba(255,255,255,0.06) 8px, rgba(255,255,255,0.06) 16px
+    );
+    display: flex;
+    align-items: flex-start;
+    padding: 0.4rem;
+  }
+  .badge {
+    color: rgba(255,255,255,0.85);
+    font-size: 0.55rem;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+  }
+  .body {
+    min-width: 0;
+    flex: 1;
+  }
+  .name {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 1.1rem;
+    color: #1f2a20;
+    margin: 0;
+    font-weight: 600;
+  }
+  .meta {
+    color: #6a6a6a;
+    font-size: 0.8rem;
+    margin: 0.2rem 0 0;
+  }
+  .note {
+    color: #4a4a4a;
+    font-size: 0.85rem;
+    font-style: italic;
+    margin: 0.4rem 0 0;
+    line-height: 1.4;
+  }
+</style>

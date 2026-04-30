@@ -4,13 +4,16 @@ import type {
   Location,
   MealType,
   RestaurantCardData,
+  RestaurantDetail,
   RestaurantEditData,
+  ReviewDetail,
   ReviewEditData,
   ReviewListRow,
   ReviewStatus,
   Tag,
   TagCategory,
 } from './types';
+import { getRegion } from './regions';
 
 export async function getLocations(db: D1Database): Promise<Location[]> {
   const { results } = await db
@@ -134,6 +137,15 @@ export async function searchRestaurants(
     where.push('loc.slug = ?');
     params.push(f.location);
   }
+  if (f.region) {
+    const region = getRegion(f.region);
+    if (region && region.suburbs.length > 0) {
+      where.push(`loc.slug IN (${region.suburbs.map(() => '?').join(',')})`);
+      params.push(...region.suburbs);
+    } else {
+      where.push('1 = 0');
+    }
+  }
   if (f.meal) {
     where.push(`EXISTS (
       SELECT 1 FROM reviews rv
@@ -150,6 +162,10 @@ export async function searchRestaurants(
     where.push(`res.price_tier IN (${f.price.map(() => '?').join(',')})`);
     params.push(...f.price);
   }
+  if (f.minRating != null) {
+    where.push('pub.avg_overall >= ?');
+    params.push(f.minRating);
+  }
   const tagSlugs = [...(f.vibes ?? []), ...(f.dietary ?? [])];
   if (tagSlugs.length > 0) {
     // Restaurant must have ALL selected tags (AND across filter categories).
@@ -163,6 +179,23 @@ export async function searchRestaurants(
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  let orderBy: string;
+  switch (f.sort) {
+    case 'rating':
+      orderBy = `pub.avg_overall DESC NULLS LAST, latest_meta.visit_date DESC, res.name ASC`;
+      break;
+    case 'name':
+      orderBy = `res.name ASC`;
+      break;
+    case 'recent':
+    default:
+      orderBy = `
+        CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 0 ELSE 1 END,
+        latest_meta.visit_date DESC,
+        res.name ASC
+      `;
+  }
 
   const sql = `
     WITH pub AS (
@@ -202,6 +235,7 @@ export async function searchRestaurants(
       latest_meta.visit_date AS latest_visit_date,
       latest_meta.meal_type  AS latest_meal_type,
       cover.r2_key           AS cover_r2_key,
+      res.hero_photo_name    AS hero_photo_name,
       CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 1 ELSE 0 END AS visited
     FROM restaurants res
     LEFT JOIN locations   loc         ON loc.id = res.location_id
@@ -209,14 +243,318 @@ export async function searchRestaurants(
     LEFT JOIN latest_meta             ON latest_meta.restaurant_id = res.id
     LEFT JOIN cover                   ON cover.review_id           = latest_meta.review_id
     ${whereSql}
-    ORDER BY
-      CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 0 ELSE 1 END,
-      latest_meta.visit_date DESC,
-      res.name ASC
+    ORDER BY ${orderBy}
   `;
 
   const stmt = params.length ? db.prepare(sql).bind(...params) : db.prepare(sql);
   const { results } = await stmt.all<Record<string, unknown>>();
+
+  const ids = results.map((r) => r.id as number);
+  const tagsByRestaurant = new Map<number, { slug: string; label: string; category: TagCategory }[]>();
+  if (ids.length > 0) {
+    const CHUNK = 90; // D1 caps bound params at 100 per query
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const tagSql = `
+        SELECT rt.restaurant_id, t.slug, t.label, t.category
+        FROM restaurant_tags rt
+        JOIN tags t ON t.id = rt.tag_id
+        WHERE rt.restaurant_id IN (${chunk.map(() => '?').join(',')})
+        ORDER BY t.category, t.label
+      `;
+      const { results: tagRows } = await db
+        .prepare(tagSql)
+        .bind(...chunk)
+        .all<{ restaurant_id: number; slug: string; label: string; category: TagCategory }>();
+      for (const row of tagRows) {
+        const arr = tagsByRestaurant.get(row.restaurant_id) ?? [];
+        arr.push({ slug: row.slug, label: row.label, category: row.category });
+        tagsByRestaurant.set(row.restaurant_id, arr);
+      }
+    }
+  }
+
+  return results.map((r): RestaurantCardData => ({
+    id: r.id as number,
+    slug: r.slug as string,
+    name: r.name as string,
+    cuisine: (r.cuisine as string | null) ?? null,
+    location: (r.location as string | null) ?? null,
+    price_tier: (r.price_tier as number | null) ?? null,
+    wishlist_note: (r.wishlist_note as string | null) ?? null,
+    visited: r.visited === 1,
+    review_count: (r.review_count as number) ?? 0,
+    avg_overall: (r.avg_overall as number | null) ?? null,
+    latest_visit_date: (r.latest_visit_date as string | null) ?? null,
+    latest_meal_type: (r.latest_meal_type as string | null) ?? null,
+    cover_r2_key: (r.cover_r2_key as string | null) ?? null,
+    hero_photo_name: (r.hero_photo_name as string | null) ?? null,
+    tags: tagsByRestaurant.get(r.id as number) ?? [],
+  }));
+}
+
+export async function getRestaurantBySlug(
+  db: D1Database,
+  slug: string
+): Promise<RestaurantDetail | null> {
+  const row = await db
+    .prepare(
+      `SELECT res.id, res.slug, res.name, res.cuisine, res.address, res.price_tier,
+              res.website_url, res.maps_url, res.place_id, res.lat, res.lng, res.wishlist_note,
+              loc.name AS location
+       FROM restaurants res
+       LEFT JOIN locations loc ON loc.id = res.location_id
+       WHERE res.slug = ?`
+    )
+    .bind(slug)
+    .first<{
+      id: number; slug: string; name: string; cuisine: string | null;
+      address: string | null; price_tier: number | null;
+      website_url: string | null; maps_url: string | null;
+      place_id: string | null; lat: number | null; lng: number | null;
+      wishlist_note: string | null; location: string | null;
+    }>();
+  if (!row) return null;
+
+  const [{ results: tagRows }, { results: reviewRows }] = await Promise.all([
+    db
+      .prepare(
+        `SELECT t.slug, t.label, t.category
+         FROM restaurant_tags rt
+         JOIN tags t ON t.id = rt.tag_id
+         WHERE rt.restaurant_id = ?
+         ORDER BY t.category, t.label`
+      )
+      .bind(row.id)
+      .all<{ slug: string; label: string; category: TagCategory }>(),
+    db
+      .prepare(
+        `SELECT id, visit_date, meal_type, rating_overall, rating_size,
+                commentary, would_return, instagram_url
+         FROM reviews
+         WHERE restaurant_id = ? AND status = 'published'
+         ORDER BY COALESCE(visit_date, '0000-00-00') DESC, id DESC`
+      )
+      .bind(row.id)
+      .all<{
+        id: number; visit_date: string | null; meal_type: MealType | null;
+        rating_overall: number | null; rating_size: number | null;
+        commentary: string | null;
+        would_return: number; instagram_url: string | null;
+      }>(),
+  ]);
+
+  const reviewIds = reviewRows.map((r) => r.id);
+  const photosByReview = new Map<number, ReviewDetail['photos']>();
+  const standoutsByReview = new Map<number, ReviewDetail['standout_items']>();
+
+  if (reviewIds.length > 0) {
+    const placeholders = reviewIds.map(() => '?').join(',');
+    const [{ results: photoRows }, { results: itemRows }] = await Promise.all([
+      db
+        .prepare(
+          `SELECT review_id, r2_key, alt, is_cover
+           FROM photos
+           WHERE review_id IN (${placeholders})
+           ORDER BY is_cover DESC, sort_order, id`
+        )
+        .bind(...reviewIds)
+        .all<{ review_id: number; r2_key: string; alt: string | null; is_cover: number }>(),
+      db
+        .prepare(
+          `SELECT review_id, name, note, is_standout
+           FROM standout_items
+           WHERE review_id IN (${placeholders})
+           ORDER BY sort_order, id`
+        )
+        .bind(...reviewIds)
+        .all<{ review_id: number; name: string; note: string | null; is_standout: number }>(),
+    ]);
+    for (const p of photoRows) {
+      const arr = photosByReview.get(p.review_id) ?? [];
+      arr.push({ r2_key: p.r2_key, alt: p.alt, is_cover: p.is_cover === 1 });
+      photosByReview.set(p.review_id, arr);
+    }
+    for (const it of itemRows) {
+      const arr = standoutsByReview.get(it.review_id) ?? [];
+      arr.push({ name: it.name, note: it.note, is_standout: it.is_standout === 1 });
+      standoutsByReview.set(it.review_id, arr);
+    }
+  }
+
+  const reviews: ReviewDetail[] = reviewRows.map((r) => ({
+    id: r.id,
+    visit_date: r.visit_date,
+    meal_type: r.meal_type,
+    rating_overall: r.rating_overall,
+    rating_size: r.rating_size,
+    commentary: r.commentary,
+    would_return: r.would_return === 1,
+    instagram_url: r.instagram_url,
+    standout_items: standoutsByReview.get(r.id) ?? [],
+    photos: photosByReview.get(r.id) ?? [],
+  }));
+
+  const ratings = reviews.map((r) => r.rating_overall).filter((n): n is number => n != null);
+  const avg_overall = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+  const visitDates = reviews.map((r) => r.visit_date).filter((d): d is string => !!d);
+  const latest_visit_date = visitDates.length > 0 ? visitDates.sort().slice(-1)[0] : null;
+
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    cuisine: row.cuisine,
+    location: row.location,
+    address: row.address,
+    price_tier: row.price_tier,
+    website_url: row.website_url,
+    maps_url: row.maps_url,
+    place_id: row.place_id,
+    lat: row.lat,
+    lng: row.lng,
+    wishlist_note: row.wishlist_note,
+    tags: tagRows,
+    reviews,
+    visit_count: reviews.length,
+    avg_overall,
+    latest_visit_date,
+  };
+}
+
+export async function getSimilarByCuisine(
+  db: D1Database,
+  cuisine: string,
+  excludeId: number,
+  limit: number = 3
+): Promise<RestaurantCardData[]> {
+  const { results } = await db
+    .prepare(
+      `WITH pub AS (
+         SELECT r.restaurant_id,
+                COUNT(*) AS review_count,
+                AVG(r.rating_overall) AS avg_overall,
+                MAX(r.visit_date) AS latest_visit_date
+         FROM reviews r
+         WHERE r.status = 'published'
+         GROUP BY r.restaurant_id
+       ),
+       latest AS (
+         SELECT r.restaurant_id, MAX(r.id) AS review_id
+         FROM reviews r
+         JOIN pub p
+           ON p.restaurant_id = r.restaurant_id
+          AND p.latest_visit_date = r.visit_date
+         WHERE r.status = 'published'
+         GROUP BY r.restaurant_id
+       ),
+       cover AS (
+         SELECT review_id, MIN(r2_key) AS r2_key
+         FROM photos
+         WHERE is_cover = 1
+         GROUP BY review_id
+       )
+       SELECT
+         res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
+         loc.name AS location,
+         COALESCE(pub.review_count, 0) AS review_count,
+         pub.avg_overall,
+         pub.latest_visit_date,
+         NULL AS latest_meal_type,
+         cover.r2_key AS cover_r2_key,
+         res.hero_photo_name AS hero_photo_name,
+         CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 1 ELSE 0 END AS visited
+       FROM restaurants res
+       LEFT JOIN locations loc ON loc.id = res.location_id
+       LEFT JOIN pub           ON pub.restaurant_id   = res.id
+       LEFT JOIN latest        ON latest.restaurant_id = res.id
+       LEFT JOIN cover         ON cover.review_id     = latest.review_id
+       WHERE res.cuisine = ? AND res.id <> ?
+       ORDER BY
+         CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 0 ELSE 1 END,
+         pub.avg_overall DESC NULLS LAST,
+         pub.latest_visit_date DESC,
+         res.name ASC
+       LIMIT ?`
+    )
+    .bind(cuisine, excludeId, limit)
+    .all<Record<string, unknown>>();
+
+  return results.map((r): RestaurantCardData => ({
+    id: r.id as number,
+    slug: r.slug as string,
+    name: r.name as string,
+    cuisine: (r.cuisine as string | null) ?? null,
+    location: (r.location as string | null) ?? null,
+    price_tier: (r.price_tier as number | null) ?? null,
+    wishlist_note: (r.wishlist_note as string | null) ?? null,
+    visited: r.visited === 1,
+    review_count: (r.review_count as number) ?? 0,
+    avg_overall: (r.avg_overall as number | null) ?? null,
+    latest_visit_date: (r.latest_visit_date as string | null) ?? null,
+    latest_meal_type: null,
+    cover_r2_key: (r.cover_r2_key as string | null) ?? null,
+    hero_photo_name: (r.hero_photo_name as string | null) ?? null,
+    tags: [],
+  }));
+}
+
+// ---- Editorial homepage queries --------------------------------------------
+
+export interface FeaturedPlaceData extends RestaurantCardData {
+  commentary: string | null;
+  rating_size: number | null;
+  rating_overall: number | null;
+}
+
+export async function getFeaturedRecent(
+  db: D1Database,
+  limit = 10
+): Promise<FeaturedPlaceData[]> {
+  const sql = `
+    WITH pub AS (
+      SELECT r.restaurant_id,
+             COUNT(*) AS review_count,
+             AVG(r.rating_overall) AS avg_overall,
+             MAX(r.visit_date) AS latest_visit_date
+      FROM reviews r
+      WHERE r.status = 'published'
+      GROUP BY r.restaurant_id
+    ),
+    latest AS (
+      SELECT r.restaurant_id, MAX(r.id) AS review_id
+      FROM reviews r
+      WHERE r.status = 'published'
+      GROUP BY r.restaurant_id
+    ),
+    cover AS (
+      SELECT review_id, MIN(r2_key) AS r2_key
+      FROM photos
+      WHERE is_cover = 1
+      GROUP BY review_id
+    )
+    SELECT
+      res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
+      res.hero_photo_name,
+      loc.name AS location,
+      pub.review_count,
+      pub.avg_overall,
+      pub.latest_visit_date,
+      rv.meal_type AS latest_meal_type,
+      rv.commentary,
+      rv.rating_overall,
+      rv.rating_size,
+      cover.r2_key AS cover_r2_key
+    FROM restaurants res
+    JOIN pub               ON pub.restaurant_id = res.id
+    JOIN latest            ON latest.restaurant_id = res.id
+    JOIN reviews rv        ON rv.id = latest.review_id
+    LEFT JOIN locations loc ON loc.id = res.location_id
+    LEFT JOIN cover         ON cover.review_id = latest.review_id
+    ORDER BY COALESCE(pub.latest_visit_date, '0000-00-00') DESC, pub.avg_overall DESC
+    LIMIT ?
+  `;
+  const { results } = await db.prepare(sql).bind(limit).all<Record<string, unknown>>();
 
   const ids = results.map((r) => r.id as number);
   const tagsByRestaurant = new Map<number, { slug: string; label: string; category: TagCategory }[]>();
@@ -239,6 +577,46 @@ export async function searchRestaurants(
     }
   }
 
+  return results.map((r): FeaturedPlaceData => ({
+    id: r.id as number,
+    slug: r.slug as string,
+    name: r.name as string,
+    cuisine: (r.cuisine as string | null) ?? null,
+    location: (r.location as string | null) ?? null,
+    price_tier: (r.price_tier as number | null) ?? null,
+    wishlist_note: (r.wishlist_note as string | null) ?? null,
+    visited: true,
+    review_count: (r.review_count as number) ?? 0,
+    avg_overall: (r.avg_overall as number | null) ?? null,
+    latest_visit_date: (r.latest_visit_date as string | null) ?? null,
+    latest_meal_type: (r.latest_meal_type as string | null) ?? null,
+    cover_r2_key: (r.cover_r2_key as string | null) ?? null,
+    hero_photo_name: (r.hero_photo_name as string | null) ?? null,
+    commentary: (r.commentary as string | null) ?? null,
+    rating_overall: (r.rating_overall as number | null) ?? null,
+    rating_size: (r.rating_size as number | null) ?? null,
+    tags: tagsByRestaurant.get(r.id as number) ?? [],
+  }));
+}
+
+export async function getWishlistPreview(
+  db: D1Database,
+  limit = 20
+): Promise<RestaurantCardData[]> {
+  const sql = `
+    SELECT
+      res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
+      res.hero_photo_name,
+      loc.name AS location
+    FROM restaurants res
+    LEFT JOIN locations loc ON loc.id = res.location_id
+    LEFT JOIN reviews rv ON rv.restaurant_id = res.id AND rv.status = 'published'
+    WHERE rv.id IS NULL
+    GROUP BY res.id
+    ORDER BY res.created_at DESC
+    LIMIT ?
+  `;
+  const { results } = await db.prepare(sql).bind(limit).all<Record<string, unknown>>();
   return results.map((r): RestaurantCardData => ({
     id: r.id as number,
     slug: r.slug as string,
@@ -247,13 +625,14 @@ export async function searchRestaurants(
     location: (r.location as string | null) ?? null,
     price_tier: (r.price_tier as number | null) ?? null,
     wishlist_note: (r.wishlist_note as string | null) ?? null,
-    visited: r.visited === 1,
-    review_count: (r.review_count as number) ?? 0,
-    avg_overall: (r.avg_overall as number | null) ?? null,
-    latest_visit_date: (r.latest_visit_date as string | null) ?? null,
-    latest_meal_type: (r.latest_meal_type as string | null) ?? null,
-    cover_r2_key: (r.cover_r2_key as string | null) ?? null,
-    tags: tagsByRestaurant.get(r.id as number) ?? [],
+    visited: false,
+    review_count: 0,
+    avg_overall: null,
+    latest_visit_date: null,
+    latest_meal_type: null,
+    cover_r2_key: null,
+    hero_photo_name: (r.hero_photo_name as string | null) ?? null,
+    tags: [],
   }));
 }
 
@@ -427,9 +806,7 @@ export async function getReviewForEdit(
   const row = await db
     .prepare(
       `SELECT rv.id, rv.restaurant_id, res.name AS restaurant_name, rv.slug,
-              rv.visit_date, rv.meal_type,
-              rv.rating_overall, rv.rating_food, rv.rating_vibe, rv.rating_service,
-              rv.rating_value, rv.rating_size,
+              rv.visit_date, rv.meal_type, rv.rating_overall, rv.rating_size,
               rv.commentary, rv.would_return, rv.instagram_url, rv.status
        FROM reviews rv
        JOIN restaurants res ON res.id = rv.restaurant_id
@@ -467,10 +844,6 @@ export async function getReviewForEdit(
     visit_date: (row.visit_date as string | null) ?? null,
     meal_type: (row.meal_type as MealType | null) ?? null,
     rating_overall: row.rating_overall as number,
-    rating_food: (row.rating_food as number | null) ?? null,
-    rating_vibe: (row.rating_vibe as number | null) ?? null,
-    rating_service: (row.rating_service as number | null) ?? null,
-    rating_value: (row.rating_value as number | null) ?? null,
     rating_size: (row.rating_size as number | null) ?? null,
     commentary: (row.commentary as string | null) ?? null,
     would_return: row.would_return === 1,
@@ -499,10 +872,6 @@ export interface ReviewInput {
   visit_date: string | null;
   meal_type: MealType | null;
   rating_overall: number;
-  rating_food: number | null;
-  rating_vibe: number | null;
-  rating_service: number | null;
-  rating_value: number | null;
   rating_size: number | null;
   commentary: string | null;
   would_return: boolean;
@@ -516,9 +885,8 @@ export async function createReview(db: D1Database, data: ReviewInput): Promise<n
     .prepare(
       `INSERT INTO reviews
        (restaurant_id, slug, visit_date, meal_type,
-        rating_overall, rating_food, rating_vibe, rating_service, rating_value, rating_size,
-        commentary, would_return, instagram_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        rating_overall, rating_size, commentary, would_return, instagram_url, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       data.restaurant_id,
@@ -526,10 +894,6 @@ export async function createReview(db: D1Database, data: ReviewInput): Promise<n
       data.visit_date,
       data.meal_type,
       data.rating_overall,
-      data.rating_food,
-      data.rating_vibe,
-      data.rating_service,
-      data.rating_value,
       data.rating_size,
       data.commentary,
       data.would_return ? 1 : 0,
@@ -550,9 +914,7 @@ export async function updateReview(
   await db
     .prepare(
       `UPDATE reviews SET
-         slug = ?, visit_date = ?, meal_type = ?,
-         rating_overall = ?, rating_food = ?, rating_vibe = ?, rating_service = ?,
-         rating_value = ?, rating_size = ?,
+         slug = ?, visit_date = ?, meal_type = ?, rating_overall = ?, rating_size = ?,
          commentary = ?, would_return = ?, instagram_url = ?, status = ?,
          updated_at = unixepoch()
        WHERE id = ?`
@@ -562,10 +924,6 @@ export async function updateReview(
       data.visit_date,
       data.meal_type,
       data.rating_overall,
-      data.rating_food,
-      data.rating_vibe,
-      data.rating_service,
-      data.rating_value,
       data.rating_size,
       data.commentary,
       data.would_return ? 1 : 0,

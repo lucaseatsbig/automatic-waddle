@@ -10,6 +10,7 @@ import {
   type ReviewInput,
 } from '../../../lib/db';
 import { parseRestaurantForm, parseReviewForm } from '../../../lib/form-helpers';
+import { fetchPlacePhotos } from '../../../lib/places';
 import { uniqueSlug } from '../../../lib/slug';
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
@@ -21,7 +22,7 @@ const ALLOWED_PHOTO_TYPES = new Set([
   'image/heif',
 ]);
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async ({ request, redirect, locals }) => {
   const form = await request.formData();
   const mode = form.get('mode') === 'wishlist' ? 'wishlist' : 'visit';
 
@@ -76,6 +77,26 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     };
     restaurantId = await createRestaurant(env.DB, input);
     restaurantSlug = slug;
+
+    if (input.place_id && env.GOOGLE_MAPS_API_KEY) {
+      const placeId = input.place_id;
+      const apiKey = env.GOOGLE_MAPS_API_KEY;
+      const newId = restaurantId;
+      const fetchHero = async () => {
+        const photos = await fetchPlacePhotos(placeId, apiKey);
+        const name = photos[0]?.name;
+        if (name) {
+          await env.DB
+            .prepare('UPDATE restaurants SET hero_photo_name = ? WHERE id = ?')
+            .bind(name, newId)
+            .run();
+        }
+      };
+      const cfContext = (locals as { cfContext?: { waitUntil?: (p: Promise<unknown>) => void } })
+        ?.cfContext;
+      if (cfContext?.waitUntil) cfContext.waitUntil(fetchHero());
+      else await fetchHero();
+    }
   }
 
   if (mode === 'wishlist') {

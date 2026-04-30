@@ -29,18 +29,24 @@ export interface RestaurantCardData {
   latest_visit_date: string | null;
   latest_meal_type: string | null;
   cover_r2_key: string | null;
+  hero_photo_name: string | null;
   tags: { slug: string; label: string; category: TagCategory }[];
 }
+
+export type SortOption = 'rating' | 'recent' | 'name';
 
 export interface Filters {
   q?: string;
   cuisine?: string;
   meal?: MealType;
   location?: string;
+  region?: string;
   visited?: 'yes' | 'no';
   price?: number[];
+  minRating?: number;
   vibes?: string[];
   dietary?: string[];
+  sort?: SortOption;
 }
 
 export interface AdminRestaurantRow {
@@ -81,10 +87,6 @@ export interface ReviewEditData {
   visit_date: string | null;
   meal_type: MealType | null;
   rating_overall: number;
-  rating_food: number | null;
-  rating_vibe: number | null;
-  rating_service: number | null;
-  rating_value: number | null;
   rating_size: number | null;
   commentary: string | null;
   would_return: boolean;
@@ -101,4 +103,38 @@ export interface ReviewListRow {
   meal_type: string | null;
   rating_overall: number;
   status: ReviewStatus;
+}
+
+export interface ReviewDetail {
+  id: number;
+  visit_date: string | null;
+  meal_type: MealType | null;
+  rating_overall: number | null;
+  rating_size: number | null;
+  commentary: string | null;
+  would_return: boolean;
+  instagram_url: string | null;
+  standout_items: { name: string; note: string | null; is_standout: boolean }[];
+  photos: { r2_key: string; alt: string | null; is_cover: boolean }[];
+}
+
+export interface RestaurantDetail {
+  id: number;
+  slug: string;
+  name: string;
+  cuisine: string | null;
+  location: string | null;
+  address: string | null;
+  price_tier: number | null;
+  website_url: string | null;
+  maps_url: string | null;
+  place_id: string | null;
+  lat: number | null;
+  lng: number | null;
+  wishlist_note: string | null;
+  tags: { slug: string; label: string; category: TagCategory }[];
+  reviews: ReviewDetail[];
+  visit_count: number;
+  avg_overall: number | null;
+  latest_visit_date: string | null;
 }

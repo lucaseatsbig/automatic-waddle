@@ -1,0 +1,147 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Masthead from '../components/Masthead.astro';
+import FilterBar from '../components/FilterBar.astro';
+import HomeListCard from '../components/HomeListCard.astro';
+import { getCuisines, getLocations, getTags, searchRestaurants } from '../lib/db';
+import type { Filters, MealType, SortOption } from '../lib/types';
+
+const sp = Astro.url.searchParams;
+
+const validMeals: MealType[] = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks'];
+const rawMeal = sp.get('meal');
+const meal: MealType | undefined = rawMeal && (validMeals as string[]).includes(rawMeal)
+  ? (rawMeal as MealType)
+  : undefined;
+
+const rawVisited = sp.get('visited');
+const visited: 'yes' | 'no' | undefined =
+  rawVisited === 'yes' ? 'yes' : rawVisited === 'no' ? 'no' : undefined;
+
+const rawSort = sp.get('sort');
+const sort: SortOption | undefined =
+  rawSort === 'rating' || rawSort === 'name' || rawSort === 'recent' ? rawSort : undefined;
+
+const rawLocation = sp.get('location') || '';
+const region = rawLocation.startsWith('region:') ? rawLocation.slice('region:'.length) : undefined;
+const location = region ? undefined : (rawLocation || undefined);
+
+const filters: Filters = {
+  q: sp.get('q')?.trim() || undefined,
+  cuisine: sp.get('cuisine') || undefined,
+  meal,
+  location,
+  region,
+  visited,
+  price: sp.getAll('price').map(Number).filter((n) => Number.isFinite(n) && n >= 1 && n <= 5),
+  minRating: (() => {
+    const raw = sp.get('minRating');
+    if (!raw) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 && n <= 10 ? n : undefined;
+  })(),
+  vibes: sp.getAll('vibes'),
+  dietary: sp.getAll('dietary'),
+  sort,
+};
+
+const [restaurants, locations, tags, cuisines] = await Promise.all([
+  searchRestaurants(env.DB, filters),
+  getLocations(env.DB),
+  getTags(env.DB),
+  getCuisines(env.DB),
+]);
+
+const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
+---
+<BaseLayout title="All places · Lucas Eats Big">
+  <Masthead active="all" />
+
+  <section class="page-head">
+    <p class="kicker">FILTER · BROWSE</p>
+    <h1>Every place, all in one list.</h1>
+    <p class="lede">Filter by region, suburb, cuisine, price, vibe or rating. Sort however you like.</p>
+  </section>
+
+  <FilterBar filters={filters} locations={locations} tags={tags} cuisines={cuisines} />
+
+  <section class="results">
+    <p class="count">
+      {restaurants.length} {restaurants.length === 1 ? 'place' : 'places'}
+    </p>
+    <div class="results-list">
+      {restaurants.map((r) => (
+        <HomeListCard restaurant={r} photosBase={photosBase} />
+      ))}
+    </div>
+    {restaurants.length === 0 && (
+      <p class="empty">No places match these filters. Try clearing some.</p>
+    )}
+  </section>
+</BaseLayout>
+
+<style>
+  .page-head {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 1.5rem;
+  }
+  .kicker {
+    font-family: var(--sans);
+    font-size: 0.6875rem;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    font-weight: 600;
+    margin: 0 0 1rem;
+    text-transform: uppercase;
+  }
+  .kicker::before {
+    content: '';
+    display: inline-block;
+    width: 32px;
+    border-top: 2px solid var(--terracotta);
+    vertical-align: middle;
+    margin-right: 0.6rem;
+  }
+  .page-head h1 {
+    font-family: var(--serif);
+    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+    font-weight: 500;
+    line-height: 1.15;
+    color: var(--ink);
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+  .lede {
+    margin: 1rem 0 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.55;
+    max-width: 56ch;
+  }
+  .results {
+    padding: 2rem 1rem 4rem;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  .count {
+    color: var(--muted);
+    margin: 0 0 1rem;
+    font-size: 0.875rem;
+  }
+  .results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  @media (max-width: 600px) {
+    .page-head { padding: 2rem 1rem 1rem; }
+    .results { padding: 1rem 1rem 3rem; }
+  }
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 3rem 0;
+  }
+</style>
