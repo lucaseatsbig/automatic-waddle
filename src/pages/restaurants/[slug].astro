@@ -144,8 +144,10 @@ function formatLongDate(iso: string | null): string | null {
             <div class="meta-value">{formatDate(restaurant.latest_visit_date) ?? '–'}</div>
           </div>
         </div>
+        {/* "Open in Maps" lives in the sticky bottom CTA on mobile and the
+            rating card on desktop is now visit-website-only. */}
         {restaurant.maps_url && (
-          <a class="maps-btn" href={restaurant.maps_url} target="_blank" rel="noopener">
+          <a class="maps-btn maps-btn-desktop" href={restaurant.maps_url} target="_blank" rel="noopener">
             ↗ Open in Maps
           </a>
         )}
@@ -226,6 +228,12 @@ function formatLongDate(iso: string | null): string | null {
       </section>
     )}
   </main>
+
+  {restaurant.maps_url && (
+    <div class="detail-bottom-cta" aria-hidden="false">
+      <a href={restaurant.maps_url} target="_blank" rel="noopener">Open in Maps ↗</a>
+    </div>
+  )}
 </BaseLayout>
 
 <style>
@@ -233,6 +241,52 @@ function formatLongDate(iso: string | null): string | null {
     max-width: 980px;
     margin: 0 auto;
     padding: 1.5rem 1.25rem 4rem;
+  }
+  @media (max-width: 768px) {
+    /* Reserve space for the sticky bottom CTA so the last bit of content
+       isn't hidden behind it on mobile. Just enough for CTA height + safe area. */
+    .page { padding-bottom: 5rem; }
+    /* Hide the inline "Open in Maps" button — the sticky bottom CTA covers it. */
+    .maps-btn-desktop { display: none; }
+    /* Without "Open in Maps" above it, the website button no longer needs the
+       margin-top spacing meant to separate two stacked buttons. */
+    .website-btn { margin-top: 1rem; }
+  }
+
+  /* Sticky "Open in Maps" CTA — mobile only; the inline maps/website link
+     in the rating-card aside stays where it is. */
+  .detail-bottom-cta {
+    display: none;
+  }
+  @media (max-width: 768px) {
+    .detail-bottom-cta {
+      display: block;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+      background: rgba(253, 243, 226, 0.92);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-top: 1px solid var(--rule);
+      z-index: 50;
+    }
+    .detail-bottom-cta a {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding: 0.85rem 1rem;
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--bg);
+      font-family: var(--sans);
+      font-weight: 600;
+      font-size: 0.9375rem;
+      text-decoration: none;
+      transition: background 0.1s;
+    }
+    .detail-bottom-cta a:hover { background: var(--forest-soft); }
   }
   .back-link {
     margin-bottom: 1rem;

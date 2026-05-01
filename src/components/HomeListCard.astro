@@ -82,13 +82,19 @@ const tagsToShow = [...r.tags]
     border-radius: 14px;
     background: var(--bg);
     transition: border-color 0.1s, background 0.1s;
+    -webkit-tap-highlight-color: transparent;
   }
-  .card:hover { border-color: var(--terracotta); background: var(--paper); }
+  /* Only apply hover styling on devices that can actually hover (mouse).
+     Without this, mobile Safari leaves the :hover state stuck on the last
+     tapped card until you tap elsewhere — looks like a stray orange border. */
+  @media (hover: hover) {
+    .card:hover { border-color: var(--terracotta); background: var(--paper); }
+    .card.wishlist:hover { border-color: var(--forest-soft); }
+  }
   .card.wishlist {
     border: 1px dashed var(--rule-strong);
     background: var(--paper);
   }
-  .card.wishlist:hover { border-color: var(--forest-soft); }
 
   .thumb {
     width: 72px;

@@ -8,8 +8,9 @@ interface Props {
   regions?: Region[];
   tags: Tag[];
   cuisines: string[];
+  count?: number;
 }
-const { filters, locations, regions = REGIONS, tags, cuisines } = Astro.props;
+const { filters, locations, regions = REGIONS, tags, cuisines, count = 0 } = Astro.props;
 
 const vibes = tags.filter((t) => t.category === 'vibe');
 const TOP_RATED_THRESHOLD = 7;
@@ -34,6 +35,26 @@ const SORT_OPTIONS = [
   { value: 'recent', label: 'Recent' },
   { value: 'name',   label: 'A–Z'    },
 ] as const;
+
+// For the visible sort label outside the sheet, use the longer human-readable
+// labels so the row reads naturally ("Sort: Best first ↕").
+const SORT_LONG_LABELS: Record<string, string> = {
+  rating: 'Best first',
+  recent: 'Recently visited',
+  name: 'A to Z',
+};
+const sortCycle = ['rating', 'recent', 'name'] as const;
+const sortIdx = sortCycle.indexOf(sort as typeof sortCycle[number]);
+const nextSort = sortCycle[(sortIdx + 1) % sortCycle.length];
+
+function urlWithSort(value: string): string {
+  const params = new URLSearchParams(Astro.url.searchParams);
+  if (value === 'rating') params.delete('sort');
+  else params.set('sort', value);
+  const qs = params.toString();
+  return qs ? `/all?${qs}` : '/all';
+}
+const nextSortHref = urlWithSort(nextSort);
 
 const isOn = (arr: string[] | undefined, v: string) => (arr ?? []).includes(v);
 const isPriceOn = (n: number) => (filters.price ?? []).includes(n);
@@ -87,13 +108,56 @@ for (const slug of filters.vibes ?? []) {
 }
 ---
 
-<div class="mfs-trigger-wrap">
-  <button type="button" class:list={['mfs-trigger', { on: activeCount > 0 }]} data-mfs-open aria-haspopup="dialog">
-    <svg width="14" height="12" viewBox="0 0 13 11" fill="none" aria-hidden="true">
-      <path d="M0 1h13M2 5.5h9M4.5 10h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-    </svg>
-    <span>Filters{activeCount > 0 && ` · ${activeCount}`}</span>
-  </button>
+<div class="mfs-bar">
+  {/*
+    Search form. Carries the existing filter selections as hidden inputs so a
+    search submission narrows the current filtered set instead of replacing it.
+  */}
+  <form class="mfs-search-row" method="get" action="/all" role="search">
+    {selectedCuisines.map((c) => <input type="hidden" name="cuisine" value={c} />)}
+    {selectedRegions.map((r) => <input type="hidden" name="location" value={`region:${r}`} />)}
+    {selectedSuburbs.map((s) => <input type="hidden" name="location" value={s} />)}
+    {(filters.price ?? []).map((p) => <input type="hidden" name="price" value={p} />)}
+    {(filters.vibes ?? []).map((v) => <input type="hidden" name="vibes" value={v} />)}
+    {topRated && <input type="hidden" name="minRating" value={String(TOP_RATED_THRESHOLD)} />}
+    {sort !== 'rating' && <input type="hidden" name="sort" value={sort} />}
+
+    <div class="mfs-search-input-wrap">
+      <svg class="mfs-search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5" />
+        <path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+      </svg>
+      <input
+        type="search"
+        name="q"
+        value={filters.q ?? ''}
+        placeholder="Search places, dishes, suburbs…"
+        enterkeyhint="search"
+        autocomplete="off"
+      />
+    </div>
+
+    <button type="button" class:list={['mfs-trigger', { on: activeCount > 0 }]} data-mfs-open aria-haspopup="dialog">
+      <svg width="14" height="12" viewBox="0 0 13 11" fill="none" aria-hidden="true">
+        <path d="M0 1h13M2 5.5h9M4.5 10h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+      <span>Filters{activeCount > 0 && ` · ${activeCount}`}</span>
+    </button>
+  </form>
+
+  <div class="mfs-sort-row">
+    <span class="mfs-sort-label">Sort</span>
+    <a class="mfs-sort-cycle" href={nextSortHref} aria-label={`Sorted by ${SORT_LONG_LABELS[sort]}. Tap to cycle.`}>
+      <span>{SORT_LONG_LABELS[sort]}</span>
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <path d="M3 4.5l3-3 3 3M3 7.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </a>
+    <span class="mfs-count">
+      <strong>{count}</strong> {count === 1 ? 'place' : 'places'}
+    </span>
+  </div>
+
   {activeChips.length > 0 && (
     <div class="mfs-applied" aria-label="Applied filters">
       {activeChips.map((chip) => (
@@ -117,6 +181,9 @@ for (const slug of filters.vibes ?? []) {
     </header>
 
     <form method="get" action="/all" class="mfs-body">
+      {/* Preserve the current search query so applying filters from the sheet
+          doesn't wipe out an active search. */}
+      {filters.q && <input type="hidden" name="q" value={filters.q} />}
       <!-- Sort -->
       <div class="mfs-group">
         <div class="mfs-legend">Sort</div>
@@ -220,10 +287,33 @@ for (const slug of filters.vibes ?? []) {
 </div>
 
 <script>
-  const root = document.querySelector<HTMLDivElement>('[data-mfs-root]');
-  const trigger = document.querySelector<HTMLButtonElement>('[data-mfs-open]');
-  if (root && trigger) {
-    const closeBtns = root.querySelectorAll<HTMLElement>('[data-mfs-close]');
+  // The site uses Astro View Transitions, which swaps the DOM on navigation
+  // instead of reloading. So per-element listeners must be re-attached on
+  // every `astro:page-load`. Global listeners (Escape, scroll-lock reset)
+  // are attached once outside the per-page init.
+
+  // Always clear any stale scroll lock when navigating away — otherwise a
+  // sheet that was open on the previous page leaves body overflow:hidden.
+  document.addEventListener('astro:before-swap', () => {
+    document.body.style.overflow = '';
+  });
+
+  // Global Escape — re-queries the current root so it works after every swap.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const root = document.querySelector<HTMLDivElement>('[data-mfs-root]');
+    if (root && root.hasAttribute('data-open')) {
+      root.removeAttribute('data-open');
+      root.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+  });
+
+  function initMobileFilterSheet() {
+    const root = document.querySelector<HTMLDivElement>('[data-mfs-root]');
+    const trigger = document.querySelector<HTMLButtonElement>('[data-mfs-open]');
+    if (!root || !trigger) return;
+
     const openSheet = () => {
       root.setAttribute('data-open', '');
       root.setAttribute('aria-hidden', 'false');
@@ -235,9 +325,8 @@ for (const slug of filters.vibes ?? []) {
       document.body.style.overflow = '';
     };
     trigger.addEventListener('click', openSheet);
-    closeBtns.forEach((el) => el.addEventListener('click', closeSheet));
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && root.hasAttribute('data-open')) closeSheet();
+    root.querySelectorAll<HTMLElement>('[data-mfs-close]').forEach((el) => {
+      el.addEventListener('click', closeSheet);
     });
 
     // Top rated toggle
@@ -264,7 +353,7 @@ for (const slug of filters.vibes ?? []) {
       });
     });
 
-    // Checkboxes (price, vibes) — sync .on class on labels
+    // Checkboxes (cuisine, location, price, vibes) — sync .on class on labels
     root.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((cb) => {
       cb.addEventListener('change', () => {
         const label = cb.closest<HTMLLabelElement>('label');
@@ -272,25 +361,107 @@ for (const slug of filters.vibes ?? []) {
       });
     });
   }
+
+  // Fires on the initial page load and after every View Transitions swap.
+  document.addEventListener('astro:page-load', initMobileFilterSheet);
 </script>
 
 <style>
   /* Hidden by default; only mounted on mobile */
-  .mfs-trigger-wrap, .mfs-root { display: none; }
+  .mfs-bar, .mfs-root { display: none; }
 
   @media (max-width: 768px) {
-    .mfs-trigger-wrap {
+    .mfs-bar {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.5rem;
+      flex-direction: column;
+      gap: 0.65rem;
       max-width: 1280px;
       margin: 0 auto;
-      padding: 0.875rem 1rem;
+      padding: 0.75rem 1rem 0.85rem;
       border-top: 1px solid var(--rule);
       border-bottom: 1px solid var(--rule);
       background: var(--paper);
     }
+    /* Row 1: search input + Filters trigger */
+    .mfs-search-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .mfs-search-input-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+    }
+    .mfs-search-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .mfs-search-input-wrap input[type="search"] {
+      width: 100%;
+      height: 38px;
+      padding: 0 0.85rem 0 2.05rem;
+      border: 1px solid var(--rule);
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 0.875rem;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .mfs-search-input-wrap input[type="search"]::placeholder { color: var(--muted); }
+    .mfs-search-input-wrap input[type="search"]:focus {
+      border-color: var(--ink);
+    }
+    /* Strip the native clear button on WebKit so it doesn't fight our styling */
+    .mfs-search-input-wrap input[type="search"]::-webkit-search-cancel-button {
+      -webkit-appearance: none;
+    }
+
+    /* Row 2: sort label/cycle + count */
+    .mfs-sort-row {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0 0.15rem;
+    }
+    .mfs-sort-label {
+      font-family: var(--sans);
+      font-size: 0.6875rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .mfs-sort-cycle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-family: var(--sans);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--ink);
+      text-decoration: none;
+      padding: 0.15rem 0;
+    }
+    .mfs-sort-cycle svg { color: var(--muted); }
+    .mfs-count {
+      margin-left: auto;
+      font-family: var(--sans);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .mfs-count strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
     .mfs-root {
       display: flex;
       position: fixed;
@@ -307,21 +478,22 @@ for (const slug of filters.vibes ?? []) {
     }
   }
 
-  /* Trigger */
+  /* Trigger — height matches the search input for visual alignment in row 1 */
   .mfs-trigger {
     display: inline-flex;
     align-items: center;
-    gap: 0.55rem;
-    height: 40px;
-    padding: 0 1rem;
+    gap: 0.4rem;
+    height: 38px;
+    padding: 0 0.95rem;
     border-radius: 999px;
     border: 1px solid var(--rule-strong);
     background: var(--bg);
     color: var(--ink);
     font-family: var(--sans);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
     cursor: pointer;
+    white-space: nowrap;
     transition: background 0.1s, border-color 0.1s, color 0.1s;
   }
   .mfs-trigger.on {

@@ -131,6 +131,8 @@ export async function searchRestaurants(
   if (f.q) {
     where.push(`(
       res.name LIKE ?
+      OR res.cuisine LIKE ?
+      OR loc.name LIKE ?
       OR EXISTS (
         SELECT 1 FROM reviews rv
         JOIN standout_items si ON si.review_id = rv.id
@@ -139,7 +141,7 @@ export async function searchRestaurants(
       )
     )`);
     const like = `%${f.q}%`;
-    params.push(like, like);
+    params.push(like, like, like, like);
   }
   if (f.cuisines && f.cuisines.length > 0) {
     where.push(`res.cuisine IN (${f.cuisines.map(() => '?').join(',')})`);

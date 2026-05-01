@@ -245,8 +245,23 @@ for (const tier of filters.price ?? []) {
 </form>
 
 <script>
-  const form = document.querySelector<HTMLFormElement>('.filter-bar');
-  if (form) {
+  // Same View Transitions caveat as MobileFilterSheet: the site uses
+  // <ClientRouter />, so the DOM is swapped on navigation. Per-element
+  // listeners must be re-attached on every astro:page-load. The single
+  // document-level "close panels on outside click" listener is attached
+  // once, outside the per-page init.
+
+  document.addEventListener('click', () => {
+    const form = document.querySelector<HTMLFormElement>('.filter-bar');
+    if (!form) return;
+    form.querySelectorAll<HTMLDivElement>('.pill-select .panel').forEach((p) => {
+      p.hidden = true;
+    });
+  });
+
+  function initFilterBar() {
+    const form = document.querySelector<HTMLFormElement>('.filter-bar');
+    if (!form) return;
     const submitNow = () => form.submit();
 
     const pillSelects = form.querySelectorAll<HTMLDivElement>('.pill-select');
@@ -276,7 +291,6 @@ for (const tier of filters.price ?? []) {
         });
       });
     });
-    document.addEventListener('click', closeAllPanels);
 
     const topRatedBtn = form.querySelector<HTMLButtonElement>('[data-top-rated]');
     const topRatedHidden = form.querySelector<HTMLInputElement>('input[name="minRating"]');
@@ -307,6 +321,9 @@ for (const tier of filters.price ?? []) {
       });
     });
   }
+
+  // Fires on initial load and after every View Transitions swap.
+  document.addEventListener('astro:page-load', initFilterBar);
 </script>
 
 <style>

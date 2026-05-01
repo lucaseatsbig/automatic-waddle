@@ -77,7 +77,7 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
   <div class="filterbar-desktop">
     <FilterBar filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} />
   </div>
-  <MobileFilterSheet filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} />
+  <MobileFilterSheet filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} count={restaurants.length} />
 
   <section class="results">
     <p class="count">
@@ -89,7 +89,14 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
       ))}
     </div>
     {restaurants.length === 0 && (
-      <p class="empty">No places match these filters. Try clearing some.</p>
+      <div class="empty">
+        <h2>Nothing's hitting today.</h2>
+        <p>Try clearing a filter, or send me a place I should add to the list.</p>
+        <div class="empty-actions">
+          <a href="/all" class="btn-clear">Clear filters</a>
+          <a href="https://instagram.com/lucaseatsbig" target="_blank" rel="noopener noreferrer" class="btn-dm">DM @lucaseatsbig</a>
+        </div>
+      </div>
     )}
   </section>
 </BaseLayout>
@@ -112,13 +119,61 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
   }
   @media (max-width: 768px) {
     .filterbar-desktop { display: none; }
+    /* Count is shown in the mobile filter bar's sort row; hide the duplicate. */
+    .results .count { display: none; }
   }
   @media (max-width: 600px) {
     .results { padding: 1rem 1rem 3rem; }
   }
   .empty {
     text-align: center;
-    color: var(--muted);
-    padding: 3rem 0;
+    padding: 5rem 1rem;
+    max-width: 32rem;
+    margin: 0 auto;
   }
+  .empty h2 {
+    font-family: var(--serif);
+    font-size: clamp(1.5rem, 3vw, 1.875rem);
+    font-style: italic;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    margin: 0 0 0.75rem;
+  }
+  .empty p {
+    color: var(--muted);
+    margin: 0 0 1.75rem;
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+  .empty-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .empty-actions .btn-clear {
+    display: inline-block;
+    padding: 0.65rem 1.25rem;
+    border-radius: 999px;
+    background: var(--ink);
+    color: var(--bg);
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.1s;
+  }
+  .empty-actions .btn-clear:hover { background: var(--forest-soft); }
+  .empty-actions .btn-dm {
+    color: var(--terracotta);
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+    padding: 0.1rem 0;
+  }
+  .empty-actions .btn-dm:hover { background: rgba(184, 84, 58, 0.08); }
 </style>
