@@ -12,6 +12,9 @@ dist
 .claude/settings.local.json
 nextsteps.txt
 
-# Generated backfill SQL — output of scripts/backfill-place-details.mjs.
-# The .mjs script is the source of truth; the .sql file is regenerated each run.
+# Generated SQL artifacts — output of the corresponding .mjs scripts. The .mjs
+# files are the source of truth; the .sql files are regenerated each run.
 scripts/backfill-place-details.sql
+scripts/backfill-hero-photos.sql
+scripts/backfill-places.sql
+scripts/notion-import.sql
