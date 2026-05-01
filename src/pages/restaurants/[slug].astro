@@ -122,7 +122,7 @@ function formatLongDate(iso: string | null): string | null {
       <aside class="rating-card">
         {visited && ratingFmt ? (
           <>
-            <div class="block-label">LUCAS RATING</div>
+            <div class="block-label">LUCAS' RATING</div>
             <div class="big-rating">{ratingFmt}<span class="denom">/10</span></div>
             <div class="rating-sub">
               {restaurant.visit_count === 1 ? '1 visit' : `across ${restaurant.visit_count} visits`}
@@ -146,8 +146,8 @@ function formatLongDate(iso: string | null): string | null {
             <div class="meta-value">{formatDate(restaurant.latest_visit_date) ?? '–'}</div>
           </div>
         </div>
-        {/* "Open in Maps" lives in the sticky bottom CTA on mobile and the
-            rating card on desktop is now visit-website-only. */}
+        {/* Desktop keeps the inline "Open in Maps" button in the rating card.
+            On mobile it's hidden because the sticky bottom CTA covers it. */}
         {restaurant.maps_url && (
           <a class="maps-btn maps-btn-desktop" href={restaurant.maps_url} target="_blank" rel="noopener">
             ↗ Open in Maps
@@ -246,20 +246,18 @@ function formatLongDate(iso: string | null): string | null {
   }
   @media (max-width: 768px) {
     /* Reserve space for the sticky bottom CTA so the last bit of content
-       isn't hidden behind it on mobile. Just enough for CTA height + safe area. */
+       isn't hidden behind it on mobile. */
     .page { padding-bottom: 5rem; }
-    /* Hide the inline "Open in Maps" button — the sticky bottom CTA covers it. */
+    /* Hide the inline desktop "Open in Maps" — the sticky bottom CTA covers it. */
     .maps-btn-desktop { display: none; }
     /* Without "Open in Maps" above it, the website button no longer needs the
        margin-top spacing meant to separate two stacked buttons. */
     .website-btn { margin-top: 1rem; }
   }
 
-  /* Sticky "Open in Maps" CTA — mobile only; the inline maps/website link
-     in the rating-card aside stays where it is. */
-  .detail-bottom-cta {
-    display: none;
-  }
+  /* Sticky "Open in Maps" CTA — mobile only. Desktop has the inline button
+     in the rating card aside instead. */
+  .detail-bottom-cta { display: none; }
   @media (max-width: 768px) {
     .detail-bottom-cta {
       display: block;

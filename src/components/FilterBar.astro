@@ -87,7 +87,22 @@ for (const tier of filters.price ?? []) {
 ---
 <form class="filter-bar" method="get" action="/all">
   <div class="bar-inner">
-    <div class="top-row">
+    {/* Row 1: search + main pills (cuisine, location, sort, top-rated) */}
+    <div class="primary-row">
+      <div class="search-input-wrap">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5" />
+          <path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+        <input
+          type="search"
+          name="q"
+          value={filters.q ?? ''}
+          placeholder="Search places, dishes, suburbs…"
+          enterkeyhint="search"
+          autocomplete="off"
+        />
+      </div>
       <div class="pill-select" data-name="cuisine">
         <input type="hidden" name="cuisine" value={selectedCuisine} />
         <button type="button" class:list={['pill', { on: !!selectedCuisine }]} data-pill-trigger>
@@ -185,6 +200,7 @@ for (const tier of filters.price ?? []) {
       </div>
     </div>
 
+    {/* Row 2: price chips */}
     <div class="chip-row">
       <span class="row-label">Price</span>
       {PRICE_TIERS.map((p) => (
@@ -201,6 +217,7 @@ for (const tier of filters.price ?? []) {
       ))}
     </div>
 
+    {/* Row 3: vibe chips on their own row */}
     {vibes.length > 0 && (
       <div class="chip-row">
         <span class="row-label">Vibe</span>
@@ -327,6 +344,41 @@ for (const tier of filters.price ?? []) {
 </script>
 
 <style>
+  /* Desktop search input. Lives inside .primary-row alongside the filter pills.
+     Submits via Enter (native form submit), preserving every other applied
+     filter via the form's existing hidden inputs. */
+  .search-input-wrap {
+    position: relative;
+  }
+  .search-icon {
+    position: absolute;
+    left: 0.85rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .search-input-wrap input[type="search"] {
+    width: 100%;
+    height: 40px;
+    padding: 0 0.95rem 0 2.2rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 0.9rem;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: border-color 0.1s;
+  }
+  .search-input-wrap input[type="search"]::placeholder { color: var(--muted); }
+  .search-input-wrap input[type="search"]:focus { border-color: var(--ink); }
+  .search-input-wrap input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+  }
+
   .filter-bar {
     background: var(--paper);
     border-top: 1px solid var(--rule);
@@ -345,7 +397,21 @@ for (const tier of filters.price ?? []) {
     .filter-bar { padding: 0.875rem 1rem; }
   }
 
-  /* Top row */
+  /* Primary row — search input + main filter pills, all in one flex line.
+     Wraps gracefully on narrow viewports; on desktop it sits on a single row. */
+  .primary-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.625rem;
+    align-items: stretch;
+  }
+  .primary-row .search-input-wrap {
+    flex: 1 1 18rem;
+    min-width: 14rem;
+    max-width: 28rem;
+  }
+  /* Old .top-row class retained in case any other consumer references it; the
+     filter bar itself no longer renders one. */
   .top-row {
     display: flex;
     flex-wrap: wrap;

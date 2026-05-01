@@ -52,6 +52,13 @@ const { active } = Astro.props;
     font-weight: 500;
     white-space: nowrap;
   }
+  /* Desktop bump — bigger logo + nav so the masthead reads with more presence
+     on wide screens. Mobile sizes (in the existing media queries below) stay
+     small to fit the narrow viewport. */
+  @media (min-width: 900px) {
+    .brand-name { font-size: 1.625rem; }
+    .nav { gap: 2rem; font-size: 1rem; }
+  }
   .brand-dot { color: var(--terracotta); }
   .nav {
     display: flex;

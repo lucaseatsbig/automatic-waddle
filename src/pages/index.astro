@@ -4,8 +4,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import HomeListCard from '../components/HomeListCard.astro';
 import HeroCard from '../components/HeroCard.astro';
-import PageHead from '../components/PageHead.astro';
+import HomeHero from '../components/HomeHero.astro';
 import { getFeaturedRecent, getWishlistPreview, searchRestaurants } from '../lib/db';
+import { placePhotoUrl } from '../lib/places';
 
 const [featuredPool, wishlistPool, allVisited] = await Promise.all([
   getFeaturedRecent(env.DB, 10),
@@ -37,34 +38,91 @@ const wishlist = pickVariety(wishlistPool, 8, (w) => w.cuisine);
 
 const visitedTotal = allVisited.length;
 const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
+
+// --- Stats strip data for the desktop hero ---
+const currentYear = new Date().getFullYear();
+const yearVisits = allVisited.filter(
+  (r) => r.latest_visit_date && new Date(r.latest_visit_date).getFullYear() === currentYear
+).length;
+const distinctCuisines = new Set(
+  allVisited.map((r) => r.cuisine).filter((c): c is string => !!c)
+).size;
+const latestDate = allVisited
+  .map((r) => r.latest_visit_date)
+  .filter((d): d is string => !!d)
+  .sort()
+  .reverse()[0];
+function sinceLabel(iso: string | undefined): string {
+  if (!iso) return '–';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
+  if (days < 1) return 'today';
+  if (days < 7) return `${days}d`;
+  if (days < 30) return `${Math.floor(days / 7)}w`;
+  if (days < 365) return `${Math.floor(days / 30)}mo`;
+  return `${Math.floor(days / 365)}y`;
+}
+const heroStats = [
+  { number: String(visitedTotal), label: 'places' },
+  { number: String(yearVisits), label: `visited '${String(currentYear).slice(-2)}` },
+  { number: String(distinctCuisines), label: 'cuisines' },
+  // "Since last visit" wraps to a second row on narrow screens — hide it there.
+  { number: sinceLabel(latestDate), label: 'since last visit', hideOnMobile: true },
+];
+
+// --- "This week's pick" side photo (most-recent visited with a usable photo) ---
+const pickRestaurant = recentList[0] ?? null;
+const pickPhotoUrl = pickRestaurant
+  ? (pickRestaurant.cover_r2_key && photosBase
+      ? `${photosBase}/${pickRestaurant.cover_r2_key}`
+      : pickRestaurant.hero_photo_name
+        ? placePhotoUrl(pickRestaurant.hero_photo_name, 800)
+        : null)
+  : null;
+const heroPick = pickRestaurant
+  ? {
+      name: pickRestaurant.name,
+      location: pickRestaurant.location,
+      rating: pickRestaurant.avg_overall,
+      photoUrl: pickPhotoUrl,
+      href: `/restaurants/${pickRestaurant.slug}`,
+    }
+  : undefined;
 ---
 <BaseLayout title="Lucas Eats Big · everywhere I've eaten in Sydney">
   <Masthead active="home" />
 
-  <PageHead kicker="SYDNEY · UPDATED WEEKLY">
+  <HomeHero kicker="SYDNEY · UPDATED WEEKLY" igHandle="lucaseatsbig" stats={heroStats} pick={heroPick}>
     <Fragment slot="title">
       Hi, I'm Lucas.<br />
-      This is <em>everywhere I've eaten</em><br />
-      and what I think of it.
+      This is <em>everywhere I've eaten</em> and what I think of it.
     </Fragment>
     <Fragment slot="lede">
       A running list of Sydney spots I've been to, ranked honestly. Friends keep asking me where to eat, so I made this for them.
-      Browse by neighbourhood, vibe, or rating, or jump to <a href="/all">the full database</a>.
+      Browse by location, vibe, or rating by jumping to <a href="/all">the full database</a>.
     </Fragment>
-  </PageHead>
+  </HomeHero>
 
-  {recentList.length > 0 && (
+  {/* recentList[0] is the "this week's pick" rendered in HomeHero above.
+      recentList[1] becomes the section's HeroCard so the visual lead-in
+      isn't a duplicate of the spotlight. The compact list starts at [2]. */}
+  {recentList.length > 1 && (
     <section class="featured-section">
       <header class="section-head">
         <h2>Best places I've been to lately</h2>
         <span class="section-meta">{visitedTotal} places · <a href="/all">see the list</a></span>
       </header>
-      <div class="recent-list">
-        {recentList[0] && <HeroCard restaurant={recentList[0]} photosBase={photosBase} />}
-        {recentList.slice(1).map((r) => (
-          <HomeListCard restaurant={r} photosBase={photosBase} />
-        ))}
-      </div>
+      {recentList[1] && (
+        <div class="recent-hero">
+          <HeroCard restaurant={recentList[1]} photosBase={photosBase} />
+        </div>
+      )}
+      {recentList.length > 2 && (
+        <div class="recent-list">
+          {recentList.slice(2).map((r) => (
+            <HomeListCard restaurant={r} photosBase={photosBase} compact />
+          ))}
+        </div>
+      )}
       {visitedTotal > recentList.length && (
         <p class="see-more"><a href="/all?visited=yes">See all {visitedTotal} visited →</a></p>
       )}
@@ -79,7 +137,7 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
       </header>
       <div class="wishlist-list">
         {wishlist.map((w) => (
-          <HomeListCard restaurant={w} photosBase={photosBase} />
+          <HomeListCard restaurant={w} photosBase={photosBase} compact />
         ))}
       </div>
     </section>
@@ -130,10 +188,22 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
   .section-meta a:hover { background: rgba(184, 84, 58, 0.08); }
 
   /* Recent list */
-  .recent-list {
-    display: flex;
-    flex-direction: column;
+  .recent-hero { margin-bottom: 0.875rem; }
+  .recent-list,
+  .wishlist-list {
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 0.6rem;
+  }
+  /* Two-column grid on desktop matches the editorial cover layout. The hero
+     card stays full-width above the grid (it lives in .recent-hero, not in
+     this grid container). */
+  @media (min-width: 900px) {
+    .recent-list,
+    .wishlist-list {
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem 0.875rem;
+    }
   }
   .see-more {
     text-align: center;
@@ -144,13 +214,6 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
     color: var(--terracotta);
     text-decoration: none;
     border-bottom: 1px solid var(--terracotta);
-  }
-
-  /* Wishlist */
-  .wishlist-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
   }
 
   /* Footer */

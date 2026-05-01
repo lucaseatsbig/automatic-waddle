@@ -1,0 +1,289 @@
+---
+// Editorial-style home page header. Bigger headline, optional stats strip
+// underneath, and a side photo + "this week's pick" callout on desktop.
+// On mobile (<900px), stacks to text-only and hides the side photo.
+//
+// Used only on the home page. /all and /about keep using PageHead.
+interface StatItem { number: string; label: string; hideOnMobile?: boolean }
+interface PickItem {
+  name: string;
+  location: string | null;
+  rating: number | null;
+  photoUrl: string | null;
+  href: string;
+}
+interface Props {
+  kicker: string;
+  igHandle?: string;
+  stats?: StatItem[];
+  pick?: PickItem;
+}
+const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Props;
+---
+<section class="home-hero">
+  <div class="hh-text">
+    <p class="kicker">
+      {kicker}
+      {igHandle && (
+        <>
+          <span class="kicker-handle">
+            {' · '}
+            <a href={`https://instagram.com/${igHandle}`} target="_blank" rel="noopener noreferrer">@{igHandle.toUpperCase()}</a>
+          </span>
+          <a
+            class="kicker-handle-icon"
+            href={`https://instagram.com/${igHandle}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`@${igHandle} on Instagram`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" stroke-width="1.8" />
+              <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8" />
+              <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
+            </svg>
+          </a>
+        </>
+      )}
+    </p>
+    <h1><slot name="title" /></h1>
+    <p class="lede"><slot name="lede" /></p>
+
+    {stats.length > 0 && (
+      <div class="stats">
+        {stats.map((s: StatItem) => (
+          <div class:list={['stat', { 'stat-hide-mobile': s.hideOnMobile }]}>
+            <div class="stat-num">{s.number}</div>
+            <div class="stat-label">{s.label}</div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+
+  {pick && (
+    <aside class="hh-pick" aria-label="This week's pick">
+      <a href={pick.href} class="pick-photo">
+        {pick.photoUrl
+          ? <img src={pick.photoUrl} alt={pick.name} loading="eager" decoding="async" />
+          : <div class="pick-placeholder" aria-hidden="true">{pick.name.charAt(0).toUpperCase()}</div>}
+      </a>
+      <a href={pick.href} class="pick-callout">
+        <div class="pick-kicker">★ This week's pick</div>
+        <div class="pick-name">{pick.name}</div>
+        <div class="pick-meta">
+          {pick.location}{pick.rating != null && <> · {pick.rating.toFixed(1)}/10</>}
+        </div>
+      </a>
+    </aside>
+  )}
+</section>
+
+<style>
+  .home-hero {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: clamp(2.5rem, 8vw, 4.5rem) 1.5rem 2rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+  @media (max-width: 600px) {
+    .home-hero { padding-left: 1rem; padding-right: 1rem; }
+  }
+  @media (min-width: 900px) {
+    .home-hero {
+      grid-template-columns: 1.4fr 1fr;
+      gap: 3.5rem;
+      align-items: start;
+    }
+  }
+
+  /* Kicker — same look as PageHead with an optional terracotta IG link suffix */
+  .kicker {
+    font-family: var(--sans);
+    font-size: 0.6875rem;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    font-weight: 600;
+    margin: 0 0 1.5rem;
+    text-transform: uppercase;
+  }
+  .kicker::before {
+    content: '';
+    display: inline-block;
+    width: 32px;
+    border-top: 2px solid var(--terracotta);
+    vertical-align: middle;
+    margin-right: 0.6rem;
+  }
+  .kicker a {
+    color: var(--terracotta);
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+  }
+  .kicker a:hover { background: rgba(184, 84, 58, 0.08); }
+  /* Desktop shows the @handle text; mobile collapses to a small IG icon
+     so the kicker line doesn't run long or wrap. */
+  .kicker-handle-icon {
+    display: none;
+    margin-left: 0.5rem;
+    color: var(--terracotta);
+    border: none !important;
+    vertical-align: middle;
+    line-height: 0;
+    padding: 2px;
+  }
+  .kicker-handle-icon:hover { background: transparent !important; }
+  @media (max-width: 600px) {
+    .kicker-handle { display: none; }
+    .kicker-handle-icon { display: inline-flex; }
+  }
+
+  /* Headline — bigger than PageHead's at the top of the desktop clamp */
+  .hh-text h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.4rem, 7vw, 5.25rem);
+    font-weight: 500;
+    line-height: 1.02;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+    margin: 0;
+  }
+  .hh-text h1 :global(em) {
+    font-style: italic;
+    color: var(--terracotta);
+    font-weight: 500;
+  }
+
+  .lede {
+    margin: 1.5rem 0 0;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.6;
+    max-width: 56ch;
+  }
+  .lede :global(a) {
+    color: var(--terracotta);
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+  }
+  .lede :global(a:hover) { background: rgba(184, 84, 58, 0.08); }
+
+  /* Stats strip — small editorial dashboard under the lede */
+  .stats {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+  }
+  .stat-num {
+    font-family: var(--serif);
+    font-size: 1.75rem;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .stat-label {
+    font-family: var(--sans);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    margin-top: 0.4rem;
+  }
+  /* Hide selected stats on narrow screens so the strip stays on one row.
+     "Since last visit" has the longest label and is the first to wrap. */
+  @media (max-width: 600px) {
+    .stat-hide-mobile { display: none; }
+  }
+
+  /* Side photo + pick callout — desktop only */
+  .hh-pick { display: none; }
+  @media (min-width: 900px) {
+    .hh-pick {
+      display: block;
+      position: relative;
+      width: 100%;
+      max-width: 360px;
+      justify-self: end;
+    }
+  }
+  .pick-photo {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--paper);
+    box-shadow: 0 24px 60px rgba(26, 40, 32, 0.18);
+    text-decoration: none;
+  }
+  .pick-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .pick-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--serif);
+    font-size: 4rem;
+    color: var(--muted);
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--paper) 0,
+      var(--paper) 12px,
+      rgba(26, 40, 32, 0.04) 12px,
+      rgba(26, 40, 32, 0.04) 24px
+    );
+  }
+
+  .pick-callout {
+    position: absolute;
+    bottom: -16px;
+    left: -16px;
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 12px 16px;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: 0 4px 12px rgba(26, 40, 32, 0.06);
+    transition: border-color 0.1s;
+  }
+  @media (hover: hover) {
+    .pick-callout:hover { border-color: var(--terracotta); }
+  }
+  .pick-kicker {
+    font-family: var(--sans);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--terracotta);
+    margin-bottom: 0.3rem;
+  }
+  .pick-name {
+    font-family: var(--serif);
+    font-size: 1.0625rem;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  .pick-meta {
+    font-family: var(--sans);
+    font-size: 0.71875rem;
+    color: var(--muted);
+    margin-top: 0.2rem;
+  }
+</style>

@@ -4,10 +4,13 @@
 // caller can include inline markup (em, a, br, etc.) inside them.
 interface Props {
   kicker: string;
+  /** Drop the 56ch max-width on the lede so a short instructional sentence
+   *  can sit on one line at desktop width. */
+  wideLede?: boolean;
 }
-const { kicker } = Astro.props;
+const { kicker, wideLede = false } = Astro.props;
 ---
-<section class="page-head">
+<section class:list={['page-head', { 'wide-lede': wideLede }]}>
   <p class="kicker">{kicker}</p>
   <h1><slot name="title" /></h1>
   <p class="lede"><slot name="lede" /></p>
@@ -61,6 +64,7 @@ const { kicker } = Astro.props;
     line-height: 1.6;
     max-width: 56ch;
   }
+  .page-head.wide-lede .lede { max-width: none; }
   .lede :global(a) {
     color: var(--terracotta);
     text-decoration: none;

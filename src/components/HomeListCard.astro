@@ -7,8 +7,14 @@ interface Props {
   restaurant: RestaurantCardData;
   photosBase: string;
   hideOnDesktop?: boolean;
+  /**
+   * Force the narrow "mobile" layout (88px thumb, inline rating, tags below)
+   * at every viewport. Use when the card sits in a multi-column grid where
+   * the wide 5-column layout would be cramped — e.g. the home page 2-col grid.
+   */
+  compact?: boolean;
 }
-const { restaurant: r, photosBase, hideOnDesktop = false } = Astro.props;
+const { restaurant: r, photosBase, hideOnDesktop = false, compact = false } = Astro.props;
 
 const uploadedCover = r.cover_r2_key && photosBase ? `${photosBase}/${r.cover_r2_key}` : null;
 const placesCover = r.hero_photo_name ? placePhotoUrl(r.hero_photo_name, 200) : null;
@@ -42,7 +48,7 @@ const mobileOverflow = Math.max(0, sortedTags.length - 2);
 ---
 <a
   href={`/restaurants/${r.slug}`}
-  class:list={['card', { wishlist: !r.visited, 'desktop-hide': hideOnDesktop }]}
+  class:list={['card', { wishlist: !r.visited, 'desktop-hide': hideOnDesktop, compact }]}
 >
   <div class="thumb">
     {heroSrc
@@ -239,7 +245,8 @@ const mobileOverflow = Math.max(0, sortedTags.length - 2);
 
   .rating-col { text-align: right; }
   /* On desktop, the .rating-col handles the rating — hide the inline slot
-     in the title row to avoid rendering it twice. */
+     in the title row to avoid rendering it twice. The .compact override
+     below restores it when the card is forced into narrow layout. */
   @media (min-width: 721px) {
     .rating-slot { display: none; }
   }
@@ -261,4 +268,21 @@ const mobileOverflow = Math.max(0, sortedTags.length - 2);
     .tags-col, .when, .rating-col { display: none; }
     .meta-line { font-size: 0.78rem; }
   }
+
+  /* Compact-prop override — same layout as mobile, but applied at any viewport
+     so cards in a multi-column grid (e.g. home page 2-col) don't render with
+     the cramped 5-column wide layout. */
+  .card.compact {
+    grid-template-columns: 88px 1fr;
+    gap: 0.75rem;
+    padding: 0.625rem;
+    border-radius: 12px;
+  }
+  .card.compact .thumb { width: 88px; height: 88px; border-radius: 10px; }
+  .card.compact .tags-col,
+  .card.compact .when,
+  .card.compact .rating-col { display: none; }
+  .card.compact .rating-slot { display: inline-flex; align-items: baseline; }
+  .card.compact .mobile-tags { display: flex; }
+  .card.compact .meta-line { font-size: 0.8125rem; }
 </style>
