@@ -37,10 +37,10 @@ export type SortOption = 'rating' | 'recent' | 'name';
 
 export interface Filters {
   q?: string;
-  cuisine?: string;
+  cuisines?: string[];
   meal?: MealType;
-  location?: string;
-  region?: string;
+  locations?: string[];
+  regions?: string[];
   visited?: 'yes' | 'no';
   price?: number[];
   minRating?: number;

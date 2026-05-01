@@ -1,0 +1,72 @@
+---
+// Shared "kicker + headline + lede" header used on the home and /all pages so
+// the two never drift out of alignment. The h1 and lede are slotted so the
+// caller can include inline markup (em, a, br, etc.) inside them.
+interface Props {
+  kicker: string;
+}
+const { kicker } = Astro.props;
+---
+<section class="page-head">
+  <p class="kicker">{kicker}</p>
+  <h1><slot name="title" /></h1>
+  <p class="lede"><slot name="lede" /></p>
+</section>
+
+<style>
+  .page-head {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: clamp(2.5rem, 8vw, 4.5rem) 1.5rem 2rem;
+  }
+  @media (max-width: 600px) {
+    .page-head { padding-left: 1rem; padding-right: 1rem; }
+  }
+  .kicker {
+    font-family: var(--sans);
+    font-size: 0.6875rem;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    font-weight: 600;
+    margin: 0 0 1.5rem;
+    text-transform: uppercase;
+  }
+  .kicker::before {
+    content: '';
+    display: inline-block;
+    width: 32px;
+    border-top: 2px solid var(--terracotta);
+    vertical-align: middle;
+    margin-right: 0.6rem;
+  }
+  .page-head h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.4rem, 5vw, 4rem);
+    font-weight: 500;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+    margin: 0;
+  }
+  /* Inline markup the caller drops into the title slot (em, etc.) */
+  .page-head h1 :global(em) {
+    font-style: italic;
+    color: var(--terracotta);
+    font-weight: 500;
+  }
+  .lede {
+    margin: 1.5rem 0 0;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.6;
+    max-width: 56ch;
+  }
+  .lede :global(a) {
+    color: var(--terracotta);
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+  }
+  .lede :global(a:hover) {
+    background: rgba(184, 84, 58, 0.08);
+  }
+</style>

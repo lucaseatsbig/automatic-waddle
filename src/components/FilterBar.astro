@@ -1,19 +1,20 @@
 ---
 import type { Filters, Location, Tag } from '../lib/types';
-import { REGIONS } from '../lib/regions';
+import { REGIONS, type Region } from '../lib/regions';
 
 interface Props {
   filters: Filters;
   locations: Location[];
+  regions?: Region[];
   tags: Tag[];
   cuisines: string[];
 }
-const { filters, locations, tags, cuisines } = Astro.props;
+const { filters, locations, regions = REGIONS, tags, cuisines } = Astro.props;
 
 const vibes = tags.filter((t) => t.category === 'vibe');
 const isOn = (arr: string[] | undefined, v: string) => (arr ?? []).includes(v);
 
-const sort = filters.sort ?? 'recent';
+const sort = filters.sort ?? 'rating';
 const sortLabels: Record<string, string> = {
   rating: 'Best first',
   recent: 'Recently visited',
@@ -31,21 +32,26 @@ const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
   { tier: 5, symbol: '$$$$$', range: '$150+pp' },
 ];
 
-const locationValue = filters.region ? `region:${filters.region}` : (filters.location ?? '');
+// Desktop dropdowns are single-select; pick the first selected value if any.
+const selectedCuisine = filters.cuisines?.[0] ?? '';
+const selectedRegion = filters.regions?.[0] ?? '';
+const selectedSuburb = filters.locations?.[0] ?? '';
+
+const locationValue = selectedRegion ? `region:${selectedRegion}` : selectedSuburb;
 const locationLabel = (() => {
-  if (filters.region) {
-    return REGIONS.find((r) => r.slug === filters.region)?.name ?? filters.region;
+  if (selectedRegion) {
+    return REGIONS.find((r) => r.slug === selectedRegion)?.name ?? selectedRegion;
   }
-  if (filters.location) {
-    return locations.find((l) => l.slug === filters.location)?.name ?? filters.location;
+  if (selectedSuburb) {
+    return locations.find((l) => l.slug === selectedSuburb)?.name ?? selectedSuburb;
   }
   return 'Anywhere';
 })();
 
 const hasFilters = !!(
-  filters.cuisine ||
-  filters.location ||
-  filters.region ||
+  (filters.cuisines && filters.cuisines.length) ||
+  (filters.locations && filters.locations.length) ||
+  (filters.regions && filters.regions.length) ||
   topRated ||
   (filters.vibes && filters.vibes.length) ||
   (filters.price && filters.price.length)
@@ -58,13 +64,16 @@ interface Chip {
   removeValue?: string;
 }
 const activeChips: Chip[] = [];
-if (filters.cuisine) activeChips.push({ key: 'cu', label: filters.cuisine, removeName: 'cuisine' });
-if (filters.region) {
-  const rname = REGIONS.find((r) => r.slug === filters.region)?.name ?? filters.region;
-  activeChips.push({ key: 'rg', label: rname, removeName: 'location' });
-} else if (filters.location) {
-  const locName = locations.find((l) => l.slug === filters.location)?.name ?? filters.location;
-  activeChips.push({ key: 'su', label: locName, removeName: 'location' });
+for (const c of filters.cuisines ?? []) {
+  activeChips.push({ key: `cu-${c}`, label: c, removeName: 'cuisine', removeValue: c });
+}
+for (const slug of filters.regions ?? []) {
+  const rname = REGIONS.find((r) => r.slug === slug)?.name ?? slug;
+  activeChips.push({ key: `rg-${slug}`, label: rname, removeName: 'location', removeValue: `region:${slug}` });
+}
+for (const slug of filters.locations ?? []) {
+  const lname = locations.find((l) => l.slug === slug)?.name ?? slug;
+  activeChips.push({ key: `su-${slug}`, label: lname, removeName: 'location', removeValue: slug });
 }
 if (topRated) activeChips.push({ key: 'tr', label: `Top rated (${TOP_RATED_THRESHOLD}+)`, removeName: 'minRating' });
 for (const slug of filters.vibes ?? []) {
@@ -80,10 +89,10 @@ for (const tier of filters.price ?? []) {
   <div class="bar-inner">
     <div class="top-row">
       <div class="pill-select" data-name="cuisine">
-        <input type="hidden" name="cuisine" value={filters.cuisine ?? ''} />
-        <button type="button" class:list={['pill', { on: !!filters.cuisine }]} data-pill-trigger>
+        <input type="hidden" name="cuisine" value={selectedCuisine} />
+        <button type="button" class:list={['pill', { on: !!selectedCuisine }]} data-pill-trigger>
           <span class="meta">Cuisine</span>
-          <span class="label">{filters.cuisine || 'Any'}</span>
+          <span class="label">{selectedCuisine || 'Any'}</span>
           <span class="caret" aria-hidden="true">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -91,13 +100,13 @@ for (const tier of filters.price ?? []) {
           </span>
         </button>
         <div class="panel" hidden>
-          {filters.cuisine && (
+          {selectedCuisine && (
             <button type="button" class="opt clear" data-value="">Clear</button>
           )}
           {cuisines.map((c) => (
             <button
               type="button"
-              class:list={['opt', { on: filters.cuisine === c }]}
+              class:list={['opt', { on: selectedCuisine === c }]}
               data-value={c}
             >
               {c}
@@ -122,7 +131,7 @@ for (const tier of filters.price ?? []) {
             <button type="button" class="opt clear" data-value="">Clear</button>
           )}
           <div class="opt-group-label">Regions</div>
-          {REGIONS.map((r) => (
+          {regions.map((r) => (
             <button
               type="button"
               class:list={['opt', { on: locationValue === `region:${r.slug}` }]}
@@ -145,8 +154,8 @@ for (const tier of filters.price ?? []) {
       </div>
 
       <div class="pill-select" data-name="sort">
-        <input type="hidden" name="sort" value={sort === 'recent' ? '' : sort} />
-        <button type="button" class:list={['pill', { on: sort !== 'recent' }]} data-pill-trigger>
+        <input type="hidden" name="sort" value={sort === 'rating' ? '' : sort} />
+        <button type="button" class:list={['pill', { on: sort !== 'rating' }]} data-pill-trigger>
           <span class="meta">Sort</span>
           <span class="label">{sortLabels[sort]}</span>
           <span class="caret" aria-hidden="true">
@@ -156,8 +165,8 @@ for (const tier of filters.price ?? []) {
           </span>
         </button>
         <div class="panel" hidden>
-          <button type="button" class:list={['opt', { on: sort === 'rating' }]} data-value="rating">Best first</button>
-          <button type="button" class:list={['opt', { on: sort === 'recent' }]} data-value="">Recently visited</button>
+          <button type="button" class:list={['opt', { on: sort === 'rating' }]} data-value="">Best first</button>
+          <button type="button" class:list={['opt', { on: sort === 'recent' }]} data-value="recent">Recently visited</button>
           <button type="button" class:list={['opt', { on: sort === 'name' }]} data-value="name">A to Z</button>
         </div>
       </div>

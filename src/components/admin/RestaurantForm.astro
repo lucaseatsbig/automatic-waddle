@@ -7,9 +7,11 @@ interface Props {
   tags: Tag[];
   cuisines: string[];
   action: string;
+  googleMapsKey?: string;
 }
-const { restaurant, locations, tags, cuisines, action } = Astro.props;
+const { restaurant, locations, tags, cuisines, action, googleMapsKey = '' } = Astro.props;
 const r = restaurant;
+const hasMapsKey = googleMapsKey.length > 0;
 const tagIds = new Set(r?.tag_ids ?? []);
 const vibes = tags.filter((t) => t.category === 'vibe');
 const dietary = tags.filter((t) => t.category === 'dietary');
@@ -18,11 +20,14 @@ const currentLocationName = r?.location_id
   ? locations.find((l) => l.id === r.location_id)?.name ?? ''
   : '';
 ---
-<form method="post" action={action} class="rest-form">
+<form method="post" action={action} class="rest-form" id="rest-form">
   <div class="grid">
     <label class="field span-2">
       <span>Name *</span>
-      <input type="text" name="name" required value={r?.name ?? ''} />
+      <input type="text" name="name" id="rf-name" required value={r?.name ?? ''} autocomplete="off" />
+      {hasMapsKey && (
+        <p class="hint">Type to search Google Maps — picking a result fills any blank fields below.</p>
+      )}
     </label>
 
     <label class="field">
@@ -55,6 +60,7 @@ const currentLocationName = r?.location_id
       <input
         type="text"
         name="location_name"
+        id="rf-location"
         value={currentLocationName}
         placeholder="Start typing a Sydney suburb…"
         list="location-list"
@@ -79,22 +85,22 @@ const currentLocationName = r?.location_id
 
     <label class="field span-2">
       <span>Address</span>
-      <input type="text" name="address" value={r?.address ?? ''} />
+      <input type="text" name="address" id="rf-address" value={r?.address ?? ''} />
     </label>
 
     <label class="field">
       <span>Website</span>
-      <input type="url" name="website_url" value={r?.website_url ?? ''} placeholder="https://…" />
+      <input type="url" name="website_url" id="rf-website" value={r?.website_url ?? ''} placeholder="https://…" />
     </label>
 
     <label class="field">
       <span>Google Maps link</span>
-      <input type="url" name="maps_url" value={r?.maps_url ?? ''} placeholder="https://www.google.com/maps/…" />
+      <input type="url" name="maps_url" id="rf-maps-url" value={r?.maps_url ?? ''} placeholder="https://www.google.com/maps/…" />
     </label>
 
-    <input type="hidden" name="place_id" value={r?.place_id ?? ''} />
-    <input type="hidden" name="lat" value={r?.lat ?? ''} />
-    <input type="hidden" name="lng" value={r?.lng ?? ''} />
+    <input type="hidden" name="place_id" id="rf-place-id" value={r?.place_id ?? ''} />
+    <input type="hidden" name="lat" id="rf-lat" value={r?.lat ?? ''} />
+    <input type="hidden" name="lng" id="rf-lng" value={r?.lng ?? ''} />
 
     <label class="field span-2">
       <span>Wishlist note <em>(only shown if no review)</em></span>
@@ -152,6 +158,66 @@ const currentLocationName = r?.location_id
       el.closest('.chip')?.classList.toggle('on', el.checked);
     });
   });
+</script>
+
+<script is:inline define:vars={{ googleMapsKey, hasMapsKey }}>
+  // Google Places autocomplete on the Name input (edit form).
+  // Picking a result fills any blank fields and updates the canonical
+  // place identifiers (place_id, lat/lng) — never overwrites data already there.
+  if (hasMapsKey) {
+    const nameInput = document.getElementById('rf-name');
+    if (nameInput) {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsKey)}&libraries=places&v=weekly&loading=async&callback=__rfInitPlaces`;
+      script.async = true;
+      window.__rfInitPlaces = function () {
+        if (!window.google?.maps?.places) return;
+        const ac = new google.maps.places.Autocomplete(nameInput, {
+          fields: ['name', 'formatted_address', 'website', 'address_components', 'place_id', 'geometry'],
+          types: ['establishment'],
+        });
+        ac.addListener('place_changed', () => {
+          const place = ac.getPlace();
+          // Only fill blank fields. Always update the canonical identifiers.
+          const fillIfBlank = (id, val) => {
+            const el = document.getElementById(id);
+            if (el && val != null && !el.value) el.value = val;
+          };
+          const setAlways = (id, val) => {
+            const el = document.getElementById(id);
+            if (el && val != null) el.value = val;
+          };
+
+          if (place.formatted_address) fillIfBlank('rf-address', place.formatted_address);
+          if (place.website)           fillIfBlank('rf-website', place.website);
+
+          const comps = place.address_components || [];
+          const pickComp = (types) =>
+            comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name;
+          const suburb = pickComp(['locality']) || pickComp(['sublocality', 'sublocality_level_1']) || pickComp(['postal_town']);
+          if (suburb) fillIfBlank('rf-location', suburb);
+
+          if (place.place_id) {
+            setAlways('rf-place-id', place.place_id);
+            const mapsEl = document.getElementById('rf-maps-url');
+            if (mapsEl && !mapsEl.value) {
+              mapsEl.value = `https://www.google.com/maps/place/?q=place_id:${place.place_id}`;
+            }
+          }
+          const loc = place.geometry?.location;
+          if (loc) {
+            setAlways('rf-lat', String(loc.lat()));
+            setAlways('rf-lng', String(loc.lng()));
+          }
+        });
+
+        const style = document.createElement('style');
+        style.textContent = '.pac-container { z-index: 10000; }';
+        document.head.appendChild(style);
+      };
+      document.head.appendChild(script);
+    }
+  }
 </script>
 
 <style>

@@ -35,6 +35,7 @@ const [locations, tags, cuisines, reviews] = await Promise.all([
     tags={tags}
     cuisines={cuisines}
     action={`/api/admin/restaurants/${restaurant.id}`}
+    googleMapsKey={env.GOOGLE_MAPS_API_KEY ?? ''}
   />
 
   <h2>Reviews</h2>

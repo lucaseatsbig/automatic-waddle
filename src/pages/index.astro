@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import HomeListCard from '../components/HomeListCard.astro';
+import PageHead from '../components/PageHead.astro';
 import { getFeaturedRecent, getWishlistPreview, searchRestaurants } from '../lib/db';
 
 const [featuredPool, wishlistPool, allVisited] = await Promise.all([
@@ -39,18 +40,17 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
 <BaseLayout title="Lucas Eats Big · everywhere I've eaten in Sydney">
   <Masthead active="home" />
 
-  <section class="hero">
-    <p class="kicker">SYDNEY · UPDATED WEEKLY</p>
-    <h1>
+  <PageHead kicker="SYDNEY · UPDATED WEEKLY">
+    <Fragment slot="title">
       Hi, I'm Lucas.<br />
       This is <em>everywhere I've eaten</em><br />
       and what I think of it.
-    </h1>
-    <p class="lede">
+    </Fragment>
+    <Fragment slot="lede">
       A running list of Sydney spots I've been to, ranked honestly. Friends keep asking me where to eat, so I made this for them.
       Browse by neighbourhood, vibe, or rating, or jump to <a href="/all">the full database</a>.
-    </p>
-  </section>
+    </Fragment>
+  </PageHead>
 
   {recentList.length > 0 && (
     <section class="featured-section">
@@ -89,60 +89,9 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
 </BaseLayout>
 
 <style>
-  /* Hero */
-  .hero {
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: clamp(2.5rem, 8vw, 4.5rem) 1.5rem 2rem;
-  }
   @media (max-width: 600px) {
-    .hero { padding-left: 1rem; padding-right: 1rem; }
     section[class$='-section'] { padding: 2rem 1rem 1rem; }
   }
-  .kicker {
-    font-family: var(--sans);
-    font-size: 0.6875rem;
-    letter-spacing: 0.18em;
-    color: var(--muted);
-    font-weight: 600;
-    margin: 0 0 1.5rem;
-    text-transform: uppercase;
-  }
-  .kicker::before {
-    content: '';
-    display: inline-block;
-    width: 32px;
-    border-top: 2px solid var(--terracotta);
-    vertical-align: middle;
-    margin-right: 0.6rem;
-  }
-  .hero h1 {
-    font-family: var(--serif);
-    font-size: clamp(2.4rem, 5vw, 4rem);
-    font-weight: 500;
-    line-height: 1.05;
-    color: var(--ink);
-    margin: 0;
-    letter-spacing: -0.025em;
-  }
-  .hero h1 em {
-    font-style: italic;
-    color: var(--terracotta);
-    font-weight: 500;
-  }
-  .lede {
-    margin: 1.5rem 0 0;
-    color: var(--muted);
-    font-size: 1rem;
-    line-height: 1.6;
-    max-width: 56ch;
-  }
-  .lede a {
-    color: var(--terracotta);
-    text-decoration: none;
-    border-bottom: 1px solid var(--terracotta);
-  }
-  .lede a:hover { background: rgba(184, 84, 58, 0.08); }
 
   /* Sections */
   section[class$='-section'] {

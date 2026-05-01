@@ -1,0 +1,607 @@
+---
+import type { Filters, Location, Tag } from '../lib/types';
+import { REGIONS, type Region } from '../lib/regions';
+
+interface Props {
+  filters: Filters;
+  locations: Location[];
+  regions?: Region[];
+  tags: Tag[];
+  cuisines: string[];
+}
+const { filters, locations, regions = REGIONS, tags, cuisines } = Astro.props;
+
+const vibes = tags.filter((t) => t.category === 'vibe');
+const TOP_RATED_THRESHOLD = 7;
+const topRated = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
+
+const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
+  { tier: 1, symbol: '$',     range: 'under $20pp' },
+  { tier: 2, symbol: '$$',    range: '$20–40pp'    },
+  { tier: 3, symbol: '$$$',   range: '$40–80pp'    },
+  { tier: 4, symbol: '$$$$',  range: '$80–150pp'   },
+  { tier: 5, symbol: '$$$$$', range: '$150+pp'     },
+];
+
+const sort = filters.sort ?? 'rating';
+
+const selectedCuisines = filters.cuisines ?? [];
+const selectedRegions = filters.regions ?? [];
+const selectedSuburbs = filters.locations ?? [];
+
+const SORT_OPTIONS = [
+  { value: 'rating', label: 'Best'   },
+  { value: 'recent', label: 'Recent' },
+  { value: 'name',   label: 'A–Z'    },
+] as const;
+
+const isOn = (arr: string[] | undefined, v: string) => (arr ?? []).includes(v);
+const isPriceOn = (n: number) => (filters.price ?? []).includes(n);
+
+let activeCount = 0;
+activeCount += selectedCuisines.length;
+activeCount += selectedRegions.length;
+activeCount += selectedSuburbs.length;
+if (topRated) activeCount++;
+if (filters.price && filters.price.length) activeCount += filters.price.length;
+if (filters.vibes && filters.vibes.length) activeCount += filters.vibes.length;
+if (sort !== 'rating') activeCount++;
+
+// Build "applied filter" chips that link to a URL with that filter removed.
+function urlWithout(name: string, value?: string): string {
+  const params = new URLSearchParams(Astro.url.searchParams);
+  if (value !== undefined) {
+    const all = params.getAll(name);
+    params.delete(name);
+    for (const v of all) if (v !== value) params.append(name, v);
+  } else {
+    params.delete(name);
+  }
+  const qs = params.toString();
+  return qs ? `/all?${qs}` : '/all';
+}
+
+interface ActiveChip { key: string; label: string; href: string; }
+const activeChips: ActiveChip[] = [];
+for (const c of selectedCuisines) {
+  activeChips.push({ key: `cu-${c}`, label: c, href: urlWithout('cuisine', c) });
+}
+for (const slug of selectedRegions) {
+  const rname = REGIONS.find((r) => r.slug === slug)?.name ?? slug;
+  activeChips.push({ key: `rg-${slug}`, label: rname, href: urlWithout('location', `region:${slug}`) });
+}
+for (const slug of selectedSuburbs) {
+  const lname = locations.find((l) => l.slug === slug)?.name ?? slug;
+  activeChips.push({ key: `su-${slug}`, label: lname, href: urlWithout('location', slug) });
+}
+if (topRated) {
+  activeChips.push({ key: 'tr', label: `Top rated (${TOP_RATED_THRESHOLD}+)`, href: urlWithout('minRating') });
+}
+for (const tier of filters.price ?? []) {
+  const p = PRICE_TIERS.find((x) => x.tier === tier);
+  if (p) activeChips.push({ key: `p-${tier}`, label: p.symbol, href: urlWithout('price', String(tier)) });
+}
+for (const slug of filters.vibes ?? []) {
+  const v = vibes.find((x) => x.slug === slug);
+  if (v) activeChips.push({ key: `v-${slug}`, label: v.label, href: urlWithout('vibes', slug) });
+}
+---
+
+<div class="mfs-trigger-wrap">
+  <button type="button" class:list={['mfs-trigger', { on: activeCount > 0 }]} data-mfs-open aria-haspopup="dialog">
+    <svg width="14" height="12" viewBox="0 0 13 11" fill="none" aria-hidden="true">
+      <path d="M0 1h13M2 5.5h9M4.5 10h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+    </svg>
+    <span>Filters{activeCount > 0 && ` · ${activeCount}`}</span>
+  </button>
+  {activeChips.length > 0 && (
+    <div class="mfs-applied" aria-label="Applied filters">
+      {activeChips.map((chip) => (
+        <a href={chip.href} class="mfs-applied-chip" aria-label={`Remove ${chip.label}`}>
+          <span>{chip.label}</span>
+          <span class="x" aria-hidden="true">×</span>
+        </a>
+      ))}
+      <a href="/all" class="mfs-applied-clear">Clear all</a>
+    </div>
+  )}
+</div>
+
+<div class="mfs-root" data-mfs-root aria-hidden="true">
+  <div class="mfs-scrim" data-mfs-close></div>
+  <div class="mfs-sheet" role="dialog" aria-modal="true" aria-labelledby="mfs-title">
+    <div class="mfs-grabber" aria-hidden="true"></div>
+    <header class="mfs-header">
+      <h2 id="mfs-title">Filters</h2>
+      <a href="/all" class="mfs-reset">Reset all</a>
+    </header>
+
+    <form method="get" action="/all" class="mfs-body">
+      <!-- Sort -->
+      <div class="mfs-group">
+        <div class="mfs-legend">Sort</div>
+        <div class="mfs-segments">
+          {SORT_OPTIONS.map((opt) => (
+            <label class:list={['mfs-seg', { on: sort === opt.value }]}>
+              <input type="radio" name="sort" value={opt.value === 'rating' ? '' : opt.value} checked={sort === opt.value} />
+              <span>{opt.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <!-- Top rated -->
+      <div class="mfs-group">
+        <div class="mfs-legend">Rating</div>
+        <input type="hidden" name="minRating" value={topRated ? String(TOP_RATED_THRESHOLD) : ''} data-mfs-toprated-input />
+        <button
+          type="button"
+          class:list={['mfs-toprated', { on: topRated }]}
+          data-mfs-toprated
+          aria-pressed={topRated ? 'true' : 'false'}
+        >
+          <span class="check" aria-hidden="true">{topRated ? '✓' : ''}</span>
+          <span>Top rated only ({TOP_RATED_THRESHOLD}+)</span>
+        </button>
+      </div>
+
+      <!-- Cuisine — multi-select checkbox pills -->
+      {cuisines.length > 0 && (
+        <div class="mfs-group">
+          <div class="mfs-legend">Cuisine</div>
+          <div class="mfs-pills">
+            {cuisines.map((c) => (
+              <label class:list={['mfs-pill', { on: selectedCuisines.includes(c) }]}>
+                <input type="checkbox" name="cuisine" value={c} checked={selectedCuisines.includes(c)} />
+                <span>{c}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <!-- Location — multi-select checkbox pills (regions and suburbs) -->
+      <div class="mfs-group">
+        <div class="mfs-legend">Location</div>
+        <div class="mfs-sub-label">Regions</div>
+        <div class="mfs-pills">
+          {regions.map((r) => (
+            <label class:list={['mfs-pill', { on: selectedRegions.includes(r.slug) }]}>
+              <input type="checkbox" name="location" value={`region:${r.slug}`} checked={selectedRegions.includes(r.slug)} />
+              <span>{r.name}</span>
+            </label>
+          ))}
+        </div>
+        <div class="mfs-sub-label">Suburbs</div>
+        <div class="mfs-pills">
+          {locations.map((l) => (
+            <label class:list={['mfs-pill', { on: selectedSuburbs.includes(l.slug) }]}>
+              <input type="checkbox" name="location" value={l.slug} checked={selectedSuburbs.includes(l.slug)} />
+              <span>{l.name}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <!-- Price -->
+      <div class="mfs-group">
+        <div class="mfs-legend">Price</div>
+        <div class="mfs-pills">
+          {PRICE_TIERS.map((p) => (
+            <label class:list={['mfs-pill mfs-pill-price', { on: isPriceOn(p.tier) }]}>
+              <input type="checkbox" name="price" value={p.tier} checked={isPriceOn(p.tier)} />
+              <span class="sym">{p.symbol}</span>
+              <span class="range">{p.range}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <!-- Vibe -->
+      {vibes.length > 0 && (
+        <div class="mfs-group">
+          <div class="mfs-legend">Vibe</div>
+          <div class="mfs-pills">
+            {vibes.map((t) => (
+              <label class:list={['mfs-pill', { on: isOn(filters.vibes, t.slug) }]}>
+                <input type="checkbox" name="vibes" value={t.slug} checked={isOn(filters.vibes, t.slug)} />
+                <span>{t.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div class="mfs-cta-wrap">
+        <button type="submit" class="mfs-cta">Show results</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const root = document.querySelector<HTMLDivElement>('[data-mfs-root]');
+  const trigger = document.querySelector<HTMLButtonElement>('[data-mfs-open]');
+  if (root && trigger) {
+    const closeBtns = root.querySelectorAll<HTMLElement>('[data-mfs-close]');
+    const openSheet = () => {
+      root.setAttribute('data-open', '');
+      root.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    };
+    const closeSheet = () => {
+      root.removeAttribute('data-open');
+      root.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    };
+    trigger.addEventListener('click', openSheet);
+    closeBtns.forEach((el) => el.addEventListener('click', closeSheet));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && root.hasAttribute('data-open')) closeSheet();
+    });
+
+    // Top rated toggle
+    const topRatedInput = root.querySelector<HTMLInputElement>('[data-mfs-toprated-input]');
+    const topRatedBtn = root.querySelector<HTMLButtonElement>('[data-mfs-toprated]');
+    if (topRatedInput && topRatedBtn) {
+      topRatedBtn.addEventListener('click', () => {
+        const willBeOn = topRatedInput.value === '';
+        topRatedInput.value = willBeOn ? '7' : '';
+        topRatedBtn.classList.toggle('on', willBeOn);
+        topRatedBtn.setAttribute('aria-pressed', willBeOn ? 'true' : 'false');
+        const check = topRatedBtn.querySelector<HTMLElement>('.check');
+        if (check) check.textContent = willBeOn ? '✓' : '';
+      });
+    }
+
+    // Sort radios — sync .on class on labels
+    root.querySelectorAll<HTMLInputElement>('input[type="radio"][name="sort"]').forEach((rb) => {
+      rb.addEventListener('change', () => {
+        root.querySelectorAll<HTMLLabelElement>('.mfs-seg').forEach((seg) => {
+          const inner = seg.querySelector<HTMLInputElement>('input[type="radio"]');
+          seg.classList.toggle('on', !!inner && inner.checked);
+        });
+      });
+    });
+
+    // Checkboxes (price, vibes) — sync .on class on labels
+    root.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const label = cb.closest<HTMLLabelElement>('label');
+        if (label) label.classList.toggle('on', cb.checked);
+      });
+    });
+  }
+</script>
+
+<style>
+  /* Hidden by default; only mounted on mobile */
+  .mfs-trigger-wrap, .mfs-root { display: none; }
+
+  @media (max-width: 768px) {
+    .mfs-trigger-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0.875rem 1rem;
+      border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      background: var(--paper);
+    }
+    .mfs-root {
+      display: flex;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      align-items: flex-end;
+      visibility: hidden;
+      pointer-events: none;
+      transition: visibility 0.25s;
+    }
+    .mfs-root[data-open] {
+      visibility: visible;
+      pointer-events: auto;
+    }
+  }
+
+  /* Trigger */
+  .mfs-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    height: 40px;
+    padding: 0 1rem;
+    border-radius: 999px;
+    border: 1px solid var(--rule-strong);
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s, color 0.1s;
+  }
+  .mfs-trigger.on {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--bg);
+  }
+
+  /* Applied filter chips next to the trigger */
+  .mfs-applied {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+  }
+  .mfs-applied-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    height: 32px;
+    padding: 0 0.45rem 0 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--ink);
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-decoration: none;
+    line-height: 1;
+  }
+  .mfs-applied-chip .x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--bg);
+    font-size: 0.65rem;
+    line-height: 1;
+  }
+  .mfs-applied-clear {
+    color: var(--terracotta);
+    font-family: var(--sans);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+    padding: 0.1rem 0;
+    margin-left: 0.15rem;
+  }
+
+  /* Scrim */
+  .mfs-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(26, 40, 32, 0.45);
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  .mfs-root[data-open] .mfs-scrim { opacity: 1; }
+
+  /* Sheet */
+  .mfs-sheet {
+    position: relative;
+    width: 100%;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border-top-left-radius: 22px;
+    border-top-right-radius: 22px;
+    box-shadow: 0 -10px 32px rgba(0, 0, 0, 0.18);
+    transform: translateY(100%);
+    transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .mfs-root[data-open] .mfs-sheet { transform: translateY(0); }
+
+  .mfs-grabber {
+    width: 38px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--rule-strong);
+    margin: 8px auto 4px;
+  }
+
+  .mfs-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 0.5rem 1.25rem 0.85rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .mfs-header h2 {
+    margin: 0;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.5rem;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+  }
+  .mfs-reset {
+    color: var(--terracotta);
+    font-family: var(--sans);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px solid var(--terracotta);
+    padding-bottom: 1px;
+  }
+
+  /* Body / form */
+  .mfs-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mfs-group {
+    padding: 1.5rem 1.25rem 1.25rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .mfs-legend {
+    font-family: var(--sans);
+    font-size: 0.8125rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 0.85rem;
+  }
+  .mfs-sub-label {
+    font-family: var(--sans);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--muted);
+    margin: 1rem 0 0.5rem;
+  }
+  /* First sub-label (e.g. "Regions" right after the "Location" legend) sits flush */
+  .mfs-legend + .mfs-sub-label,
+  .mfs-legend + input + .mfs-sub-label { margin-top: 0; }
+
+  /* Sort segments */
+  .mfs-segments {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+  }
+  .mfs-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .mfs-seg input { display: none; }
+  .mfs-seg.on {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--bg);
+  }
+
+  /* Top rated row */
+  .mfs-toprated {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    height: 48px;
+    padding: 0 0.95rem;
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .mfs-toprated.on {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--bg);
+  }
+  .mfs-toprated .check {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1.5px solid var(--rule-strong);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    line-height: 1;
+    color: transparent;
+    flex-shrink: 0;
+  }
+  .mfs-toprated.on .check {
+    border-color: var(--bg);
+    background: var(--bg);
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  /* Pills */
+  .mfs-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .mfs-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 34px;
+    padding: 0 0.85rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    line-height: 1;
+  }
+  .mfs-pill input { display: none; }
+  .mfs-pill.on {
+    background: var(--terracotta);
+    border-color: var(--terracotta);
+    color: var(--bg);
+  }
+  .mfs-pill-price.on {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--bg);
+  }
+  .mfs-pill-price .sym {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .mfs-pill-price .range {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 400;
+  }
+  .mfs-pill-price.on .range { color: rgba(255, 255, 255, 0.7); }
+
+  /* Sticky CTA */
+  .mfs-cta-wrap {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg);
+    padding: 0.85rem 1rem calc(0.85rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--rule);
+  }
+  .mfs-cta {
+    width: 100%;
+    height: 50px;
+    border-radius: 14px;
+    background: var(--ink);
+    color: var(--bg);
+    border: none;
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mfs-cta:hover { background: var(--forest-soft); }
+</style>

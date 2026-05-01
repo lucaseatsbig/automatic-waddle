@@ -22,6 +22,18 @@ export async function getLocations(db: D1Database): Promise<Location[]> {
   return results;
 }
 
+export async function getLocationsInUse(db: D1Database): Promise<Location[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT l.id, l.slug, l.name
+         FROM locations l
+         INNER JOIN restaurants r ON r.location_id = l.id
+         ORDER BY l.name`
+    )
+    .all<Location>();
+  return results;
+}
+
 export async function getTags(db: D1Database): Promise<Tag[]> {
   const { results } = await db
     .prepare('SELECT id, slug, label, category FROM tags ORDER BY category, label')
@@ -129,22 +141,26 @@ export async function searchRestaurants(
     const like = `%${f.q}%`;
     params.push(like, like);
   }
-  if (f.cuisine) {
-    where.push('res.cuisine = ?');
-    params.push(f.cuisine);
+  if (f.cuisines && f.cuisines.length > 0) {
+    where.push(`res.cuisine IN (${f.cuisines.map(() => '?').join(',')})`);
+    params.push(...f.cuisines);
   }
-  if (f.location) {
-    where.push('loc.slug = ?');
-    params.push(f.location);
+  // Combine selected regions (each expands to its suburbs) and explicit suburb
+  // selections into a single OR'd suburb-slug list.
+  const suburbSlugs = new Set<string>();
+  for (const slug of f.locations ?? []) suburbSlugs.add(slug);
+  for (const regionSlug of f.regions ?? []) {
+    const region = getRegion(regionSlug);
+    if (region) for (const s of region.suburbs) suburbSlugs.add(s);
   }
-  if (f.region) {
-    const region = getRegion(f.region);
-    if (region && region.suburbs.length > 0) {
-      where.push(`loc.slug IN (${region.suburbs.map(() => '?').join(',')})`);
-      params.push(...region.suburbs);
-    } else {
-      where.push('1 = 0');
-    }
+  const anyLocationSelected = (f.locations?.length ?? 0) + (f.regions?.length ?? 0) > 0;
+  if (suburbSlugs.size > 0) {
+    const arr = Array.from(suburbSlugs);
+    where.push(`loc.slug IN (${arr.map(() => '?').join(',')})`);
+    params.push(...arr);
+  } else if (anyLocationSelected) {
+    // Selected something but it expanded to no suburbs (region with empty list).
+    where.push('1 = 0');
   }
   if (f.meal) {
     where.push(`EXISTS (
@@ -182,19 +198,19 @@ export async function searchRestaurants(
 
   let orderBy: string;
   switch (f.sort) {
-    case 'rating':
-      orderBy = `pub.avg_overall DESC NULLS LAST, latest_meta.visit_date DESC, res.name ASC`;
-      break;
-    case 'name':
-      orderBy = `res.name ASC`;
-      break;
     case 'recent':
-    default:
       orderBy = `
         CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 0 ELSE 1 END,
         latest_meta.visit_date DESC,
         res.name ASC
       `;
+      break;
+    case 'name':
+      orderBy = `res.name ASC`;
+      break;
+    case 'rating':
+    default:
+      orderBy = `pub.avg_overall DESC NULLS LAST, latest_meta.visit_date DESC, res.name ASC`;
   }
 
   const sql = `
@@ -471,7 +487,6 @@ export async function getSimilarByCuisine(
        LEFT JOIN cover         ON cover.review_id     = latest.review_id
        WHERE res.cuisine = ? AND res.id <> ?
        ORDER BY
-         CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 0 ELSE 1 END,
          pub.avg_overall DESC NULLS LAST,
          pub.latest_visit_date DESC,
          res.name ASC

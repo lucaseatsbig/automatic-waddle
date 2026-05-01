@@ -6,11 +6,101 @@ import Masthead from '../components/Masthead.astro';
   <Masthead active="about" />
 
   <main class="about">
-    <h1>Hi <span class="wave" aria-hidden="true">👋</span></h1>
+    <div class="hero">
+      <div class="hero-text">
+        <h1>Hi <span class="wave" aria-hidden="true">👋</span></h1>
+        <p class="hero-sub">This site is the back-end of <a href="https://instagram.com/lucaseatsbig" target="_blank" rel="noopener noreferrer">@lucaseatsbig</a>.</p>
+        <p>I'm Lucas, I live in Sydney, and I think about food more than is healthy.</p>
+        <p>This site is a running record of every restaurant I've been to that I had an opinion about. It started as a Notion database that got too big, then a spreadsheet, and finally something I could send to friends without making them sign up for anything.</p>
+        <p>Every entry is mine. Every rating is honest. I pay for everything I eat. No comps, no PR dinners, no agenda. If something's on the wishlist it's because I want to go; if it's rated it's because I went.</p>
+      </div>
+      <div class="phone" aria-hidden="true">
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <img src="/instagram-profile.png" alt="" loading="lazy" />
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="prose">
-      <p>I'm Lucas, I live in Sydney, and I think about food more than is healthy.</p>
-      <p>This site is a running record of every restaurant I've been to that I had an opinion about. It started as a Notion database that got too big, then a spreadsheet, and finally something I could send to friends without making them sign up for anything.</p>
-      <p>Every entry is mine. Every rating is honest. I pay for everything I eat. No comps, no PR dinners, no agenda. If something's on the wishlist it's because I want to go; if it's rated it's because I went.</p>
+
+      <h2>How I score</h2>
+      <p>I rate every visit out of 10, in half-points. There's no formula. It's an overall feel for how good the meal was. As a rough guide:</p>
+      <ul class="scale">
+        <li><strong>9–10</strong> <span>exceptional. I'd recommend it to anyone, no caveats.</span></li>
+        <li><strong>7–8</strong> <span>really good. Worth going out of your way for.</span></li>
+        <li><strong>5–6</strong> <span>fine. Would go back if it was convenient.</span></li>
+        <li><strong>3–4</strong> <span>disappointing. Wouldn't return without a reason.</span></li>
+        <li><strong>1–2</strong> <span>bad. Avoid.</span></li>
+      </ul>
+      <p>If I've been more than once, the number you see is the average across visits. Each visit also has a separate <em>size</em> rating from 1–10, relative to its category. A 9-size burger is huge for a burger, not huge in absolute terms (10 = hard to finish, 1 = barely a snack).</p>
+      <p>There's also a <em>would return</em> flag on every visit. Sometimes a place rates a 6 but I'd 100% go back; sometimes an 8 and I'm done with it. The flag captures that separately from the score.</p>
+
+      <h2>What you can filter on</h2>
+      <p>Head to <a href="/all">all places</a> and you can slice the list by:</p>
+      <ul class="filters">
+        <li>
+          <strong>Cuisine</strong>
+          <p>One primary cuisine per entry. A few of the options:</p>
+          <div class="ex-row">
+            <span class="ex-cuisine">Japanese</span>
+            <span class="ex-cuisine">Italian</span>
+            <span class="ex-cuisine">Thai</span>
+            <span class="ex-cuisine">Korean</span>
+            <span class="ex-more">+ more</span>
+          </div>
+        </li>
+        <li>
+          <strong>Location</strong>
+          <p>Pick a Sydney region or a specific suburb. For example:</p>
+          <div class="ex-row">
+            <span class="ex-location"><span class="pin" aria-hidden="true">●</span>Inner West</span>
+            <span class="ex-location"><span class="pin" aria-hidden="true">●</span>Surry Hills</span>
+            <span class="ex-location"><span class="pin" aria-hidden="true">●</span>Eastern Suburbs</span>
+            <span class="ex-more">+ more</span>
+          </div>
+        </li>
+        <li>
+          <strong>Price</strong>
+          <p>Five tiers, multi-select:</p>
+          <div class="ex-row">
+            <span class="ex-price">$</span>
+            <span class="ex-price">$$</span>
+            <span class="ex-price">$$$</span>
+            <span class="ex-price">$$$$</span>
+            <span class="ex-price">$$$$$</span>
+          </div>
+        </li>
+        <li>
+          <strong>Vibe</strong>
+          <p>Pick as many as you want. A few of the options:</p>
+          <div class="ex-row">
+            <span class="ex-vibe">Date spot</span>
+            <span class="ex-vibe">Casual</span>
+            <span class="ex-vibe">Upscale</span>
+            <span class="ex-vibe">Loud</span>
+            <span class="ex-vibe">Quiet</span>
+            <span class="ex-more">+ more</span>
+          </div>
+        </li>
+        <li>
+          <strong>Top rated</strong>
+          <p>One-tap toggle for anything 7 or above:</p>
+          <div class="ex-row">
+            <span class="ex-toggle"><span class="check">✓</span> Top rated (7+)</span>
+          </div>
+        </li>
+        <li>
+          <strong>Visited vs wishlist</strong>
+          <p>See only places I've been, or only ones on the list:</p>
+          <div class="ex-row">
+            <span class="ex-toggle on">Visited</span>
+            <span class="ex-toggle">Wishlist</span>
+          </div>
+        </li>
+      </ul>
+      <p>Sort by best-first, most-recently-visited, or A–Z.</p>
+
       <p class="muted">
         Got a place I should try?
         <a href="https://instagram.com/lucaseatsbig" target="_blank" rel="noopener noreferrer">tell me</a>.
@@ -21,18 +111,91 @@ import Masthead from '../components/Masthead.astro';
 
 <style>
   .about {
-    max-width: 720px;
+    max-width: 920px;
     margin: 0 auto;
     padding: clamp(3rem, 8vw, 4rem) clamp(1.25rem, 4vw, 2.5rem) 5rem;
   }
+  .hero {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    align-items: stretch;
+    margin-bottom: 2.5rem;
+  }
+  @media (min-width: 720px) {
+    .hero {
+      grid-template-columns: 1fr auto;
+      gap: 3rem;
+    }
+  }
+  .hero-text {
+    min-width: 0;
+    font-family: var(--serif);
+    font-size: clamp(1.1rem, 2vw, 1.375rem);
+    line-height: 1.6;
+    color: var(--ink);
+    text-wrap: pretty;
+  }
+  .hero-text > p { margin: 0 0 1rem; }
+  .hero-text > p:last-child { margin-bottom: 0; }
   h1 {
     font-family: var(--serif);
     font-size: clamp(3rem, 8vw, 4.5rem);
     line-height: 0.95;
     letter-spacing: -0.035em;
     font-weight: 500;
-    margin: 0 0 2rem;
+    margin: 0 0 1rem;
     color: var(--ink);
+  }
+  .hero-sub {
+    font-family: var(--serif);
+    font-size: clamp(1.05rem, 1.8vw, 1.25rem);
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.5;
+    font-style: italic;
+  }
+  .hero-sub a {
+    color: var(--terracotta);
+    border-bottom: 1px solid var(--terracotta);
+    text-decoration: none;
+  }
+  .hero-sub a:hover { background: rgba(184, 84, 58, 0.08); }
+
+  /* iPhone mockup — only the top half is visible; the rest fades to background */
+  .phone {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+  }
+  .phone-frame {
+    position: relative;
+    width: clamp(220px, 28vw, 280px);
+    height: 100%;
+    background: #0c0c0c;
+    border-radius: 54px 54px 0 0;
+    padding: 5px 5px 0;
+    box-sizing: border-box;
+    box-shadow:
+      0 0 0 1px #3a3a3c inset,
+      0 0 0 2.5px #1a1a1a;
+    -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+  }
+  .phone-screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 49px 49px 0 0;
+    overflow: hidden;
+    background: #fff;
+  }
+  .phone-screen img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
   }
   .wave {
     font-style: italic;
@@ -47,10 +210,157 @@ import Masthead from '../components/Masthead.astro';
     text-wrap: pretty;
   }
   .prose p { margin: 0 0 1rem; }
+  .prose h2 {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: clamp(1.5rem, 3vw, 1.875rem);
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.015em;
+    margin: 2.5rem 0 1rem;
+  }
+  .prose ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .prose ul li {
+    padding: 0.6rem 0.9rem;
+    border-left: 2px solid var(--rule);
+    color: var(--ink);
+  }
+  .prose ul.scale li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.9rem;
+  }
+  .prose ul.scale li strong {
+    color: var(--terracotta);
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.95em;
+    flex: 0 0 3.5rem;
+  }
+  .prose ul.filters {
+    gap: 1rem;
+  }
+  .prose ul.filters li {
+    padding: 1rem 1.1rem;
+  }
+  .prose ul.filters li strong {
+    display: block;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.375rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin-bottom: 0.25rem;
+  }
+  .prose ul.filters li p {
+    font-family: var(--sans);
+    font-size: 0.9375rem;
+    color: var(--muted);
+    margin: 0 0 0.75rem;
+    line-height: 1.45;
+  }
+  .ex-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    font-family: var(--sans);
+    font-size: 0.8125rem;
+  }
+  .ex-row > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 32px;
+    padding: 0 0.95rem;
+    min-width: 7rem;
+    border-radius: 999px;
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1;
+    box-sizing: border-box;
+    white-space: nowrap;
+  }
+  .ex-more {
+    background: transparent !important;
+    border: 1px dashed var(--rule-strong) !important;
+    color: var(--muted) !important;
+    font-style: italic;
+    font-weight: 500;
+  }
+  .ex-cuisine {
+    background: rgba(184, 84, 58, 0.08) !important;
+    border-color: rgba(184, 84, 58, 0.2) !important;
+    color: var(--terracotta) !important;
+    font-weight: 500;
+  }
+  .ex-location {
+    background: rgba(45, 69, 56, 0.08) !important;
+    border-color: rgba(45, 69, 56, 0.2) !important;
+    color: var(--forest-soft) !important;
+    font-weight: 500;
+  }
+  .ex-location .pin {
+    font-size: 0.55rem;
+    line-height: 1;
+    transform: translateY(-0.5px);
+  }
+  .ex-price {
+    background: var(--ink) !important;
+    color: var(--bg) !important;
+    border-color: var(--ink) !important;
+  }
+  .ex-price .sym {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .ex-vibe {
+    background: var(--terracotta) !important;
+    color: var(--bg) !important;
+    border-color: var(--terracotta) !important;
+    font-weight: 500;
+  }
+  .ex-toggle {
+    border: 1px solid var(--rule-strong) !important;
+    font-weight: 500;
+  }
+  .ex-toggle.on,
+  .ex-toggle:has(.check) {
+    background: var(--ink) !important;
+    color: var(--bg) !important;
+    border-color: var(--ink) !important;
+  }
+  .ex-toggle .check {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0;
+    border: none;
+  }
+  .prose em {
+    font-style: italic;
+    color: var(--terracotta);
+  }
   .prose .muted {
     color: var(--muted);
     font-style: italic;
-    margin-top: 1.5rem;
+    margin-top: 2.5rem;
   }
   .prose a {
     color: var(--terracotta);
