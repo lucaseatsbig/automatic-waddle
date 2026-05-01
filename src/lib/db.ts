@@ -121,6 +121,31 @@ export async function getOrCreateLocationByName(
   return Number(res.meta.last_row_id);
 }
 
+// Generate plural ↔ singular variants of a search token. English-only and
+// deliberately conservative — only handles the patterns that won't produce
+// false positives. Words ending in "ss" / "us" / very short words are skipped.
+function expandPluralVariants(token: string): string[] {
+  const set = new Set<string>([token]);
+  const t = token;
+  if (t.length > 3 && t.endsWith('ies')) {
+    // pastries → pastry, fries → fry
+    set.add(t.slice(0, -3) + 'y');
+  } else if (t.length > 3 && t.endsWith('es') && !t.endsWith('ses')) {
+    // dishes → dish, brunches → brunch (skip "ses" to avoid mangling "courses")
+    set.add(t.slice(0, -2));
+  }
+  if (t.length > 2 && t.endsWith('s') && !t.endsWith('ss') && !t.endsWith('us')) {
+    // burgers → burger, tacos → taco
+    set.add(t.slice(0, -1));
+  }
+  // Add a naive plural too so "burger" finds "burgers" in the data.
+  if (t.length > 2 && !t.endsWith('s')) {
+    set.add(t + 's');
+    if (t.endsWith('y') && t.length > 2) set.add(t.slice(0, -1) + 'ies');
+  }
+  return Array.from(set);
+}
+
 export async function searchRestaurants(
   db: D1Database,
   f: Filters
@@ -129,19 +154,30 @@ export async function searchRestaurants(
   const params: unknown[] = [];
 
   if (f.q) {
-    where.push(`(
-      res.name LIKE ?
-      OR res.cuisine LIKE ?
-      OR loc.name LIKE ?
-      OR EXISTS (
-        SELECT 1 FROM reviews rv
-        JOIN standout_items si ON si.review_id = rv.id
-        WHERE rv.restaurant_id = res.id AND rv.status = 'published'
-          AND si.name LIKE ?
-      )
-    )`);
-    const like = `%${f.q}%`;
-    params.push(like, like, like, like);
+    // Tokenize the query and expand each token to its plural/singular variants
+    // so "burgers" finds "burger", "pastries" finds "pastry", "dishes" finds
+    // "dish", etc. Each token must match (AND across tokens), but any of its
+    // variants may match (OR within a token).
+    const tokens = f.q.toLowerCase().trim().split(/\s+/).filter((t) => t.length > 0);
+    for (const tok of tokens) {
+      const variants = expandPluralVariants(tok);
+      const orClauses = variants.map(() => `(
+        res.name LIKE ?
+        OR res.cuisine LIKE ?
+        OR loc.name LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM reviews rv
+          JOIN standout_items si ON si.review_id = rv.id
+          WHERE rv.restaurant_id = res.id AND rv.status = 'published'
+            AND si.name LIKE ?
+        )
+      )`).join(' OR ');
+      where.push('(' + orClauses + ')');
+      for (const v of variants) {
+        const like = `%${v}%`;
+        params.push(like, like, like, like);
+      }
+    }
   }
   if (f.cuisines && f.cuisines.length > 0) {
     where.push(`res.cuisine IN (${f.cuisines.map(() => '?').join(',')})`);
