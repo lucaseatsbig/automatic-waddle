@@ -11,3 +11,7 @@ dist
 *.log
 .claude/settings.local.json
 nextsteps.txt
+
+# Generated backfill SQL — output of scripts/backfill-place-details.mjs.
+# The .mjs script is the source of truth; the .sql file is regenerated each run.
+scripts/backfill-place-details.sql
