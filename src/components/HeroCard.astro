@@ -1,0 +1,219 @@
+---
+// Full-bleed hero card. Used once at the top of the Home "Best places I've
+// been to lately" section. Same data shape as HomeListCard so swapping is easy.
+import type { RestaurantCardData } from '../lib/types';
+import { placePhotoUrl } from '../lib/places';
+import Rating from './Rating.astro';
+
+interface Props {
+  restaurant: RestaurantCardData;
+  photosBase: string;
+}
+const { restaurant: r, photosBase } = Astro.props;
+
+const uploadedCover = r.cover_r2_key && photosBase ? `${photosBase}/${r.cover_r2_key}` : null;
+const placesCover = r.hero_photo_name ? placePhotoUrl(r.hero_photo_name, 1200) : null;
+const heroSrc = uploadedCover ?? placesCover;
+
+const categoryOrder: Record<string, number> = { vibe: 0, dietary: 1, other: 2 };
+const tagsToShow = [...r.tags]
+  .sort((a, b) => (categoryOrder[a.category] ?? 99) - (categoryOrder[b.category] ?? 99))
+  .slice(0, 3);
+
+const priceSymbol = r.price_tier ? '$'.repeat(r.price_tier) : '';
+---
+<a href={`/restaurants/${r.slug}`} class="hero-card">
+  {heroSrc ? (
+    <img src={heroSrc} alt="" loading="eager" decoding="async" class="hero-img" />
+  ) : (
+    <div class="hero-placeholder" aria-hidden="true">{r.name.charAt(0).toUpperCase()}</div>
+  )}
+  <div class="scrim" aria-hidden="true"></div>
+  <span class="kicker">★ Lucas's pick</span>
+  <div class="rating-corner">
+    {r.avg_overall != null && (
+      <div class="rating-chip">
+        <Rating value={r.avg_overall} size="lg" />
+      </div>
+    )}
+  </div>
+  <div class="meta">
+    <div class="meta-bg" aria-hidden="true"></div>
+    <h3>{r.name}</h3>
+    <p class="line">
+      {r.cuisine}{r.location && <> · {r.location}</>}{priceSymbol && <> · {priceSymbol}</>}
+    </p>
+    {tagsToShow.length > 0 && (
+      <div class="tags">
+        {tagsToShow.map((t) => (
+          <span class="tag">{t.label.toLowerCase()}</span>
+        ))}
+      </div>
+    )}
+  </div>
+</a>
+
+<style>
+  .hero-card {
+    display: block;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 11;
+    border-radius: 16px;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    background: var(--paper);
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (min-width: 721px) {
+    .hero-card { aspect-ratio: 21 / 9; }
+  }
+  .hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .hero-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--serif);
+    font-size: 4rem;
+    color: var(--muted);
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--paper) 0,
+      var(--paper) 12px,
+      rgba(26, 40, 32, 0.04) 12px,
+      rgba(26, 40, 32, 0.04) 24px
+    );
+  }
+  .scrim {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      /* Concentrated darkening behind the meta block (bottom-left) so name + line
+         remain legible even on bright/busy photos. */
+      radial-gradient(ellipse 80% 60% at 20% 100%, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0) 70%),
+      /* General bottom gradient for full-width readability. */
+      linear-gradient(180deg, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.55) 75%, rgba(0, 0, 0, 0.8) 100%),
+      /* Top fade so the kicker pill has its own contrast. */
+      linear-gradient(0deg, rgba(0, 0, 0, 0) 70%, rgba(0, 0, 0, 0.4) 100%);
+  }
+  .kicker {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--bg);
+    background: rgba(0, 0, 0, 0.32);
+    padding: 5px 10px;
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .rating-corner {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 2;
+  }
+  /* Wrap the rating in a translucent dark chip so 7+ (terracotta number) and
+     <7 (ink number) tiers always have contrast against arbitrary photo content.
+     The 9+ tier is itself a filled pill — the :has() rule below removes the
+     chip backing in that case to avoid a double-pill look. */
+  .rating-chip {
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 999px;
+    padding: 6px 10px;
+    display: inline-flex;
+  }
+  .rating-chip:has(.rating-high) {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0;
+  }
+  /* Force the 7+ and <7 tier numbers to white inside the chip so they read on
+     dark. The Rating component's tier color is meaningful in flat list cards;
+     on a photo, contrast wins. */
+  .rating-chip :global(.rating-mid),
+  .rating-chip :global(.rating-low) {
+    color: var(--bg);
+  }
+  .rating-chip :global(.rating-mid .denom),
+  .rating-chip :global(.rating-low .denom) {
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .meta {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 14px;
+    color: var(--bg);
+    /* Stack the meta-bg under the text via z-index without it escaping. */
+    isolation: isolate;
+  }
+  .meta > * { position: relative; z-index: 1; }
+  /* Subtle blurred backing so the title/meta never disappear into a bright
+     photo, even after the scrim. Extends slightly past the text bounds. */
+  .meta-bg {
+    position: absolute;
+    inset: -8px -12px -8px -12px;
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 12px;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 0;
+  }
+  .meta h3 {
+    font-family: var(--serif);
+    font-size: clamp(24px, 5vw, 36px);
+    font-weight: 500;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    margin: 0;
+    color: var(--bg);
+  }
+  .meta .line {
+    font-family: var(--sans);
+    font-size: 13px;
+    opacity: 0.92;
+    margin: 4px 0 0;
+  }
+  .meta .tags {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .meta .tag {
+    font-family: var(--sans);
+    font-size: 10.5px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: var(--bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    text-transform: lowercase;
+  }
+  @media (hover: hover) {
+    .hero-img { transition: transform 0.3s ease; }
+    .hero-card:hover .hero-img { transform: scale(1.02); }
+  }
+</style>

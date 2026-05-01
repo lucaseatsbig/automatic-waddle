@@ -1,6 +1,17 @@
 ---
+import { env } from 'cloudflare:workers';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
+import HomeListCard from '../components/HomeListCard.astro';
+import Rating from '../components/Rating.astro';
+import { getFeaturedRecent } from '../lib/db';
+
+// Pull one well-rated visited place to use as a worked example. Prefer 9+ so
+// readers see the high-tier pill treatment in context; fall back to whatever
+// is most recent if there isn't one.
+const featured = await getFeaturedRecent(env.DB, 5);
+const exampleRestaurant = featured.find((r) => r.avg_overall != null && r.avg_overall >= 9) ?? featured[0];
+const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
 ---
 <BaseLayout title="About · Lucas Eats Big" description="Hi, I'm Lucas. This is everywhere I've eaten in Sydney.">
   <Masthead active="about" />
@@ -25,16 +36,50 @@ import Masthead from '../components/Masthead.astro';
     <div class="prose">
 
       <h2>How I score</h2>
-      <p>I rate every visit out of 10, in half-points. There's no formula. It's an overall feel for how good the meal was. As a rough guide:</p>
-      <ul class="scale">
-        <li><strong>9–10</strong> <span>exceptional. I'd recommend it to anyone, no caveats.</span></li>
-        <li><strong>7–8</strong> <span>really good. Worth going out of your way for.</span></li>
-        <li><strong>5–6</strong> <span>fine. Would go back if it was convenient.</span></li>
-        <li><strong>3–4</strong> <span>disappointing. Wouldn't return without a reason.</span></li>
-        <li><strong>1–2</strong> <span>bad. Avoid.</span></li>
-      </ul>
+      <p>I rate every visit out of 10, in half-points. There's no formula. It's an overall feel for how good the meal was. Here's how it shows up on the cards:</p>
+      <div class="score-tiers">
+        <div class="tier-row">
+          <div class="tier-pill">
+            <Rating value={9.5} size="md" />
+            <span class="tier-range">9.0+</span>
+          </div>
+          <div class="tier-body">
+            <h3>Exceptional</h3>
+            <p>I'd recommend it to anyone, no caveats. Worth re-ordering your week for.</p>
+          </div>
+        </div>
+        <div class="tier-row">
+          <div class="tier-pill">
+            <Rating value={8.0} size="md" />
+            <span class="tier-range">7.0–8.9</span>
+          </div>
+          <div class="tier-body">
+            <h3>Really good</h3>
+            <p>Worth going out of your way for. The bar I want every meal to clear.</p>
+          </div>
+        </div>
+        <div class="tier-row">
+          <div class="tier-pill">
+            <Rating value={6.0} size="md" />
+            <span class="tier-range">Below 7</span>
+          </div>
+          <div class="tier-body">
+            <h3>A mixed bag</h3>
+            <p>Fine, disappointing, or "I had to try it once". The number tells the story.</p>
+          </div>
+        </div>
+      </div>
       <p>If I've been more than once, the number you see is the average across visits. Each visit also has a separate <em>size</em> rating from 1–10, relative to its category. A 9-size burger is huge for a burger, not huge in absolute terms (10 = hard to finish, 1 = barely a snack).</p>
       <p>There's also a <em>would return</em> flag on every visit. Sometimes a place rates a 6 but I'd 100% go back; sometimes an 8 and I'm done with it. The flag captures that separately from the score.</p>
+
+      {exampleRestaurant && (
+        <>
+          <p class="example-label">For example:</p>
+          <div class="example-card">
+            <HomeListCard restaurant={exampleRestaurant} photosBase={photosBase} />
+          </div>
+        </>
+      )}
 
       <h2>What you can filter on</h2>
       <p>Head to <a href="/all">all places</a> and you can slice the list by:</p>
@@ -232,17 +277,78 @@ import Masthead from '../components/Masthead.astro';
     border-left: 2px solid var(--rule);
     color: var(--ink);
   }
-  .prose ul.scale li {
-    display: flex;
-    align-items: baseline;
-    gap: 0.9rem;
+  /* "How I score" tier rows. Each row is self-contained: rating tile + range
+     label on the left, heading + body on the right. No cross-row alignment,
+     no fixed-width tricks — the grid does the work. */
+  .score-tiers {
+    margin: 1.5rem 0 2rem;
+    border-bottom: 1px solid var(--rule);
   }
-  .prose ul.scale li strong {
-    color: var(--terracotta);
+  .tier-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 1.5rem;
+    align-items: start;
+    padding: 1.125rem 0;
+    border-top: 1px solid var(--rule);
+  }
+  .tier-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+  .tier-range {
     font-family: var(--sans);
+    font-size: 0.6875rem;
     font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .tier-body { padding-top: 0.125rem; }
+  .tier-body h3 {
+    font-family: var(--serif);
+    font-size: 1.375rem;
+    font-weight: 500;
+    font-style: italic;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin: 0 0 0.25rem;
+  }
+  .tier-body p {
+    font-family: var(--serif);
+    font-size: 1.0625rem;
+    line-height: 1.55;
+    color: var(--ink);
+    opacity: 0.88;
+    margin: 0;
+  }
+  @media (max-width: 600px) {
+    .tier-row {
+      grid-template-columns: 1fr;
+      gap: 0.625rem;
+      padding: 1.125rem 0;
+    }
+    .tier-pill {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .tier-body h3 { font-size: 1.125rem; margin-bottom: 0.125rem; }
+    .tier-body p { font-size: 1rem; }
+  }
+
+  /* Worked example card — sits below the rating legend. */
+  .example-label {
+    color: var(--muted);
+    font-style: italic;
     font-size: 0.95em;
-    flex: 0 0 3.5rem;
+    margin: 1.5rem 0 0.6rem;
+  }
+  .example-card {
+    margin: 0 0 1.5rem;
   }
   .prose ul.filters {
     gap: 1rem;

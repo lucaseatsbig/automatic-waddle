@@ -1,0 +1,59 @@
+---
+// Tiered rating display. Three visual tiers based on the score:
+//   • 9.0+   — filled terracotta pill, white number ("Lucas's pick" treatment)
+//   • 7.0–8.9 — terracotta number, muted "/10" denominator
+//   • <7.0   — ink number, muted "/10" denominator (same size, NOT muted)
+// Wishlist places (value == null) render nothing.
+interface Props {
+  value: number | null | undefined;
+  size?: 'sm' | 'md' | 'lg';
+}
+const { value, size = 'md' } = Astro.props;
+
+const tier = value == null ? null : value >= 9 ? 'high' : value >= 7 ? 'mid' : 'low';
+---
+{value != null && (
+  <span class:list={['rating', `rating-${tier}`, `rating-${size}`]}>
+    <span class="num">{value.toFixed(1)}</span><span class="denom">/10</span>
+  </span>
+)}
+
+<style>
+  .rating {
+    font-family: var(--serif);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 1px;
+    white-space: nowrap;
+  }
+
+  /* Sizes */
+  .rating-sm .num   { font-size: 18px; }
+  .rating-sm .denom { font-size: 9px;  }
+  .rating-md .num   { font-size: 26px; }
+  .rating-md .denom { font-size: 12px; }
+  .rating-lg .num   { font-size: 32px; }
+  .rating-lg .denom { font-size: 14px; }
+
+  /* High tier — filled pill (9.0+) */
+  .rating-high {
+    background: var(--terracotta);
+    color: var(--bg);
+    padding: 5px 11px;
+    border-radius: 999px;
+  }
+  .rating-high.rating-sm { padding: 3px 8px;  }
+  .rating-high.rating-lg { padding: 7px 14px; }
+  .rating-high .denom { opacity: 0.75; }
+
+  /* Mid tier — terracotta number, muted denom (7.0–8.9) */
+  .rating-mid       { color: var(--terracotta); }
+  .rating-mid .denom { color: var(--muted); }
+
+  /* Low tier — ink number, muted denom only. Same size as mid; not shrunk. */
+  .rating-low        { color: var(--ink); }
+  .rating-low .denom { color: var(--muted); font-weight: 500; }
+</style>

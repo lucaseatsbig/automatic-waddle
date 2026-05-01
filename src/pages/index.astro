@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import HomeListCard from '../components/HomeListCard.astro';
+import HeroCard from '../components/HeroCard.astro';
 import PageHead from '../components/PageHead.astro';
 import { getFeaturedRecent, getWishlistPreview, searchRestaurants } from '../lib/db';
 
@@ -59,7 +60,8 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
         <span class="section-meta">{visitedTotal} places · <a href="/all">see the list</a></span>
       </header>
       <div class="recent-list">
-        {recentList.map((r) => (
+        {recentList[0] && <HeroCard restaurant={recentList[0]} photosBase={photosBase} />}
+        {recentList.slice(1).map((r) => (
           <HomeListCard restaurant={r} photosBase={photosBase} />
         ))}
       </div>
