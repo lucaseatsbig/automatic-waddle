@@ -1,6 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import Masthead from '../../components/Masthead.astro';
 import RestaurantCard from '../../components/RestaurantCard.astro';
 import { getRestaurantBySlug, getSimilarByCuisine } from '../../lib/db';
 import { fetchPlacePhotos, placePhotoUrl, type PlacesPhoto } from '../../lib/places';
@@ -67,6 +68,7 @@ function formatLongDate(iso: string | null): string | null {
 }
 ---
 <BaseLayout title={`${restaurant.name} · Lucas Eats Big`}>
+  <Masthead active="all" />
   <main class="page">
     <div class="back-link">
       <a href="/">← All places</a>
