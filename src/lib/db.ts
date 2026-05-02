@@ -15,6 +15,28 @@ import type {
 } from './types';
 import { getRegion } from './regions';
 
+// Worker-lifetime memoization for read-mostly reference data used to populate
+// the FilterBar / MobileFilterSheet on every request. The underlying tables
+// (`tags`, `locations`, plus DISTINCT cuisines from `restaurants`) only change
+// when an admin saves a new entry, so a short TTL keeps three D1 round-trips
+// off the hot path for normal traffic. Admin endpoints can call
+// `invalidateReferenceCache()` after writes to force-refresh.
+const REFERENCE_CACHE_TTL_MS = 5 * 60 * 1000;
+type CacheEntry<T> = { value: T; expiresAt: number };
+const referenceCache = new Map<string, CacheEntry<unknown>>();
+
+async function memoizeReference<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const hit = referenceCache.get(key) as CacheEntry<T> | undefined;
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  const value = await fn();
+  referenceCache.set(key, { value, expiresAt: Date.now() + REFERENCE_CACHE_TTL_MS });
+  return value;
+}
+
+export function invalidateReferenceCache(): void {
+  referenceCache.clear();
+}
+
 export async function getLocations(db: D1Database): Promise<Location[]> {
   const { results } = await db
     .prepare('SELECT id, slug, name FROM locations ORDER BY name')
@@ -23,31 +45,37 @@ export async function getLocations(db: D1Database): Promise<Location[]> {
 }
 
 export async function getLocationsInUse(db: D1Database): Promise<Location[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT DISTINCT l.id, l.slug, l.name
-         FROM locations l
-         INNER JOIN restaurants r ON r.location_id = l.id
-         ORDER BY l.name`
-    )
-    .all<Location>();
-  return results;
+  return memoizeReference('locationsInUse', async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT DISTINCT l.id, l.slug, l.name
+           FROM locations l
+           INNER JOIN restaurants r ON r.location_id = l.id
+           ORDER BY l.name`
+      )
+      .all<Location>();
+    return results;
+  });
 }
 
 export async function getTags(db: D1Database): Promise<Tag[]> {
-  const { results } = await db
-    .prepare('SELECT id, slug, label, category FROM tags ORDER BY category, label')
-    .all<Tag>();
-  return results;
+  return memoizeReference('tags', async () => {
+    const { results } = await db
+      .prepare('SELECT id, slug, label, category FROM tags ORDER BY category, label')
+      .all<Tag>();
+    return results;
+  });
 }
 
 export async function getCuisines(db: D1Database): Promise<string[]> {
-  const { results } = await db
-    .prepare(
-      "SELECT DISTINCT cuisine FROM restaurants WHERE cuisine IS NOT NULL AND cuisine <> '' ORDER BY cuisine"
-    )
-    .all<{ cuisine: string }>();
-  return results.map((r) => r.cuisine);
+  return memoizeReference('cuisines', async () => {
+    const { results } = await db
+      .prepare(
+        "SELECT DISTINCT cuisine FROM restaurants WHERE cuisine IS NOT NULL AND cuisine <> '' ORDER BY cuisine"
+      )
+      .all<{ cuisine: string }>();
+    return results.map((r) => r.cuisine);
+  });
 }
 
 export async function getCuisineSuggestions(db: D1Database): Promise<string[]> {
@@ -303,28 +331,29 @@ export async function searchRestaurants(
   const stmt = params.length ? db.prepare(sql).bind(...params) : db.prepare(sql);
   const { results } = await stmt.all<Record<string, unknown>>();
 
-  const ids = results.map((r) => r.id as number);
+  // Inline integer IDs into the IN clause to avoid D1's 100-bound-param ceiling
+  // and the multi-round-trip chunking it forced. The IDs come straight from D1
+  // (an INTEGER column), but `Number.isInteger` guards against any oddball
+  // coercion before string-interpolation into SQL.
+  const ids = results
+    .map((r) => Number(r.id))
+    .filter((n) => Number.isInteger(n) && n > 0);
   const tagsByRestaurant = new Map<number, { slug: string; label: string; category: TagCategory }[]>();
   if (ids.length > 0) {
-    const CHUNK = 90; // D1 caps bound params at 100 per query
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      const chunk = ids.slice(i, i + CHUNK);
-      const tagSql = `
-        SELECT rt.restaurant_id, t.slug, t.label, t.category
-        FROM restaurant_tags rt
-        JOIN tags t ON t.id = rt.tag_id
-        WHERE rt.restaurant_id IN (${chunk.map(() => '?').join(',')})
-        ORDER BY t.category, t.label
-      `;
-      const { results: tagRows } = await db
-        .prepare(tagSql)
-        .bind(...chunk)
-        .all<{ restaurant_id: number; slug: string; label: string; category: TagCategory }>();
-      for (const row of tagRows) {
-        const arr = tagsByRestaurant.get(row.restaurant_id) ?? [];
-        arr.push({ slug: row.slug, label: row.label, category: row.category });
-        tagsByRestaurant.set(row.restaurant_id, arr);
-      }
+    const tagSql = `
+      SELECT rt.restaurant_id, t.slug, t.label, t.category
+      FROM restaurant_tags rt
+      JOIN tags t ON t.id = rt.tag_id
+      WHERE rt.restaurant_id IN (${ids.join(',')})
+      ORDER BY t.category, t.label
+    `;
+    const { results: tagRows } = await db
+      .prepare(tagSql)
+      .all<{ restaurant_id: number; slug: string; label: string; category: TagCategory }>();
+    for (const row of tagRows) {
+      const arr = tagsByRestaurant.get(row.restaurant_id) ?? [];
+      arr.push({ slug: row.slug, label: row.label, category: row.category });
+      tagsByRestaurant.set(row.restaurant_id, arr);
     }
   }
 

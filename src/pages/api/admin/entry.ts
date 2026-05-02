@@ -6,6 +6,7 @@ import {
   findRestaurantByName,
   getOrCreateLocationByName,
   insertPhoto,
+  invalidateReferenceCache,
   type RestaurantInput,
   type ReviewInput,
 } from '../../../lib/db';
@@ -77,6 +78,9 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     };
     restaurantId = await createRestaurant(env.DB, input);
     restaurantSlug = slug;
+    // A new restaurant may introduce a previously-unseen cuisine or location,
+    // both of which feed the FilterBar's memoized reference lists.
+    invalidateReferenceCache();
 
     if (input.place_id && env.GOOGLE_MAPS_API_KEY) {
       const placeId = input.place_id;
