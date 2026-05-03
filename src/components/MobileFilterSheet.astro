@@ -9,8 +9,14 @@ interface Props {
   tags: Tag[];
   cuisines: string[];
   count?: number;
+  /**
+   * Current view mode on /all. Threaded through the sheet's forms and
+   * Reset/Clear-all links so map view survives filter changes.
+   */
+  view?: 'list' | 'map';
 }
-const { filters, locations, regions = REGIONS, tags, cuisines, count = 0 } = Astro.props;
+const { filters, locations, regions = REGIONS, tags, cuisines, count = 0, view = 'list' } = Astro.props;
+const clearAllHref = view === 'map' ? '/all?view=map' : '/all';
 
 const vibes = tags.filter((t) => t.category === 'vibe');
 const TOP_RATED_THRESHOLD = 7;
@@ -24,16 +30,16 @@ const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
   { tier: 5, symbol: '$$$$$', range: '$150+pp'     },
 ];
 
-const sort = filters.sort ?? 'rating';
+const sort = filters.sort ?? 'name';
 
 const selectedCuisines = filters.cuisines ?? [];
 const selectedRegions = filters.regions ?? [];
 const selectedSuburbs = filters.locations ?? [];
 
 const SORT_OPTIONS = [
+  { value: 'name',   label: 'A–Z'    },
   { value: 'rating', label: 'Best'   },
   { value: 'recent', label: 'Recent' },
-  { value: 'name',   label: 'A–Z'    },
 ] as const;
 
 // For the visible sort label outside the sheet, use the longer human-readable
@@ -43,13 +49,13 @@ const SORT_LONG_LABELS: Record<string, string> = {
   recent: 'Recently visited',
   name: 'A to Z',
 };
-const sortCycle = ['rating', 'recent', 'name'] as const;
+const sortCycle = ['name', 'rating', 'recent'] as const;
 const sortIdx = sortCycle.indexOf(sort as typeof sortCycle[number]);
 const nextSort = sortCycle[(sortIdx + 1) % sortCycle.length];
 
 function urlWithSort(value: string): string {
   const params = new URLSearchParams(Astro.url.searchParams);
-  if (value === 'rating') params.delete('sort');
+  if (value === 'name') params.delete('sort');
   else params.set('sort', value);
   const qs = params.toString();
   return qs ? `/all?${qs}` : '/all';
@@ -66,7 +72,7 @@ activeCount += selectedSuburbs.length;
 if (topRated) activeCount++;
 if (filters.price && filters.price.length) activeCount += filters.price.length;
 if (filters.vibes && filters.vibes.length) activeCount += filters.vibes.length;
-if (sort !== 'rating') activeCount++;
+if (sort !== 'name') activeCount++;
 
 // Build "applied filter" chips that link to a URL with that filter removed.
 function urlWithout(name: string, value?: string): string {
@@ -133,7 +139,9 @@ for (const slug of filters.vibes ?? []) {
     {(filters.price ?? []).map((p) => <input type="hidden" name="price" value={p} />)}
     {(filters.vibes ?? []).map((v) => <input type="hidden" name="vibes" value={v} />)}
     {topRated && <input type="hidden" name="minRating" value={String(TOP_RATED_THRESHOLD)} />}
-    {sort !== 'rating' && <input type="hidden" name="sort" value={sort} />}
+    {sort !== 'name' && <input type="hidden" name="sort" value={sort} />}
+    {/* Preserve map/list view across search submission. */}
+    {view === 'map' && <input type="hidden" name="view" value="map" />}
 
     <div class="mfs-search-input-wrap">
       <svg class="mfs-search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -179,7 +187,7 @@ for (const slug of filters.vibes ?? []) {
           <span class="x" aria-hidden="true">×</span>
         </a>
       ))}
-      <a href="/all" class="mfs-applied-clear">Clear all</a>
+      <a href={clearAllHref} class="mfs-applied-clear">Clear all</a>
     </div>
   )}
 </div>
@@ -190,20 +198,22 @@ for (const slug of filters.vibes ?? []) {
     <div class="mfs-grabber" aria-hidden="true"></div>
     <header class="mfs-header">
       <h2 id="mfs-title">Filters</h2>
-      <a href="/all" class="mfs-reset">Reset all</a>
+      <a href={clearAllHref} class="mfs-reset">Reset all</a>
     </header>
 
     <form method="get" action="/all" class="mfs-body">
       {/* Preserve the current search query so applying filters from the sheet
           doesn't wipe out an active search. */}
       {filters.q && <input type="hidden" name="q" value={filters.q} />}
+      {/* Preserve map view when applying filters from the sheet. */}
+      {view === 'map' && <input type="hidden" name="view" value="map" />}
       <!-- Sort -->
       <div class="mfs-group">
         <div class="mfs-legend">Sort</div>
         <div class="mfs-segments">
           {SORT_OPTIONS.map((opt) => (
             <label class:list={['mfs-seg', { on: sort === opt.value }]}>
-              <input type="radio" name="sort" value={opt.value === 'rating' ? '' : opt.value} checked={sort === opt.value} />
+              <input type="radio" name="sort" value={opt.value === 'name' ? '' : opt.value} checked={sort === opt.value} />
               <span>{opt.label}</span>
             </label>
           ))}

@@ -33,7 +33,20 @@ function pickVariety<T>(pool: T[], n: number, key: (item: T) => string | null): 
   return result;
 }
 
-const recentList = featuredPool.slice(0, 10);
+// Promote a high-rated place to the spotlight slot (recentList[0] — mobile
+// HeroCard and desktop HomeHero side-photo). Prefer the most-recent 9+; fall
+// back to 8+. The rest stay in recency order.
+function promoteSpotlight<T extends { avg_overall: number | null }>(pool: T[]): T[] {
+  const idx = (() => {
+    const nine = pool.findIndex((r) => r.avg_overall != null && r.avg_overall >= 9);
+    if (nine >= 0) return nine;
+    return pool.findIndex((r) => r.avg_overall != null && r.avg_overall >= 8);
+  })();
+  if (idx <= 0) return pool;
+  return [pool[idx], ...pool.slice(0, idx), ...pool.slice(idx + 1)];
+}
+
+const recentList = promoteSpotlight(featuredPool);
 const wishlist = pickVariety(wishlistPool, 8, (w) => w.cuisine);
 
 const visitedTotal = allVisited.length;
@@ -111,18 +124,43 @@ const heroPick = pickRestaurant
         <h2>Best places I've been to lately</h2>
         <span class="section-meta">{visitedTotal} places · <a href="/all">see the list</a></span>
       </header>
-      {recentList[1] && (
-        <div class="recent-hero">
-          <HeroCard restaurant={recentList[1]} photosBase={photosBase} />
-        </div>
-      )}
-      {recentList.length > 2 && (
-        <div class="recent-list">
-          {recentList.slice(2).map((r) => (
-            <HomeListCard restaurant={r} photosBase={photosBase} compact />
-          ))}
-        </div>
-      )}
+
+      {/* Mobile (<900px): HomeHero's side-photo "pick" doesn't render at this
+          width, so recentList[0] becomes the HeroCard here — the most
+          prominent slot. The compact list starts at [1]. */}
+      <div class="layout-mobile">
+        {recentList[0] && (
+          <div class="recent-hero">
+            <HeroCard restaurant={recentList[0]} photosBase={photosBase} />
+          </div>
+        )}
+        {recentList.length > 1 && (
+          <div class="recent-list">
+            {recentList.slice(1).map((r) => (
+              <HomeListCard restaurant={r} photosBase={photosBase} compact />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Desktop (≥900px): recentList[0] is shown in HomeHero's side-photo
+          callout, so the section's HeroCard uses recentList[1] and the
+          compact list starts at [2] to avoid a duplicate. */}
+      <div class="layout-desktop">
+        {recentList[1] && (
+          <div class="recent-hero">
+            <HeroCard restaurant={recentList[1]} photosBase={photosBase} />
+          </div>
+        )}
+        {recentList.length > 2 && (
+          <div class="recent-list">
+            {recentList.slice(2).map((r) => (
+              <HomeListCard restaurant={r} photosBase={photosBase} compact />
+            ))}
+          </div>
+        )}
+      </div>
+
       {visitedTotal > recentList.length && (
         <p class="see-more"><a href="/all?visited=yes">See all {visitedTotal} visited →</a></p>
       )}
@@ -186,6 +224,16 @@ const heroPick = pickRestaurant
     border-bottom: 1px solid var(--terracotta);
   }
   .section-meta a:hover { background: rgba(184, 84, 58, 0.08); }
+
+  /* Two-layout swap at 900px. Below: recentList[0] is the HeroCard, list
+     starts at [1]. Above: HomeHero's side photo carries [0], section HeroCard
+     is [1], list starts at [2]. Toggling whole subtrees avoids juggling
+     conditional indices and keeps both layouts dead simple to reason about. */
+  .layout-desktop { display: none; }
+  @media (min-width: 900px) {
+    .layout-mobile { display: none; }
+    .layout-desktop { display: block; }
+  }
 
   /* Recent list */
   .recent-hero { margin-bottom: 0.875rem; }

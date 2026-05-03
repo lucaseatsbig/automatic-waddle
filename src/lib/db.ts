@@ -271,12 +271,12 @@ export async function searchRestaurants(
         res.name ASC
       `;
       break;
-    case 'name':
-      orderBy = `res.name ASC`;
-      break;
     case 'rating':
-    default:
       orderBy = `pub.avg_overall DESC NULLS LAST, latest_meta.visit_date DESC, res.name ASC`;
+      break;
+    case 'name':
+    default:
+      orderBy = `res.name ASC`;
   }
 
   const sql = `
@@ -311,6 +311,7 @@ export async function searchRestaurants(
     )
     SELECT
       res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
+      res.lat, res.lng,
       loc.name AS location,
       COALESCE(pub.review_count, 0) AS review_count,
       pub.avg_overall,
@@ -372,6 +373,8 @@ export async function searchRestaurants(
     latest_meal_type: (r.latest_meal_type as string | null) ?? null,
     cover_r2_key: (r.cover_r2_key as string | null) ?? null,
     hero_photo_name: (r.hero_photo_name as string | null) ?? null,
+    lat: (r.lat as number | null) ?? null,
+    lng: (r.lng as number | null) ?? null,
     tags: tagsByRestaurant.get(r.id as number) ?? [],
   }));
 }
@@ -539,6 +542,7 @@ export async function getSimilarByCuisine(
        )
        SELECT
          res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
+         res.lat, res.lng,
          loc.name AS location,
          COALESCE(pub.review_count, 0) AS review_count,
          pub.avg_overall,
@@ -577,6 +581,8 @@ export async function getSimilarByCuisine(
     latest_meal_type: null,
     cover_r2_key: (r.cover_r2_key as string | null) ?? null,
     hero_photo_name: (r.hero_photo_name as string | null) ?? null,
+    lat: (r.lat as number | null) ?? null,
+    lng: (r.lng as number | null) ?? null,
     tags: [],
   }));
 }
@@ -617,7 +623,7 @@ export async function getFeaturedRecent(
     )
     SELECT
       res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
-      res.hero_photo_name,
+      res.hero_photo_name, res.lat, res.lng,
       loc.name AS location,
       pub.review_count,
       pub.avg_overall,
@@ -674,6 +680,8 @@ export async function getFeaturedRecent(
     latest_meal_type: (r.latest_meal_type as string | null) ?? null,
     cover_r2_key: (r.cover_r2_key as string | null) ?? null,
     hero_photo_name: (r.hero_photo_name as string | null) ?? null,
+    lat: (r.lat as number | null) ?? null,
+    lng: (r.lng as number | null) ?? null,
     commentary: (r.commentary as string | null) ?? null,
     rating_overall: (r.rating_overall as number | null) ?? null,
     rating_size: (r.rating_size as number | null) ?? null,
@@ -688,7 +696,7 @@ export async function getWishlistPreview(
   const sql = `
     SELECT
       res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
-      res.hero_photo_name,
+      res.hero_photo_name, res.lat, res.lng,
       loc.name AS location
     FROM restaurants res
     LEFT JOIN locations loc ON loc.id = res.location_id
@@ -714,6 +722,8 @@ export async function getWishlistPreview(
     latest_meal_type: null,
     cover_r2_key: null,
     hero_photo_name: (r.hero_photo_name as string | null) ?? null,
+    lat: (r.lat as number | null) ?? null,
+    lng: (r.lng as number | null) ?? null,
     tags: [],
   }));
 }

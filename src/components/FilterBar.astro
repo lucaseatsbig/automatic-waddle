@@ -8,13 +8,19 @@ interface Props {
   regions?: Region[];
   tags: Tag[];
   cuisines: string[];
+  /**
+   * Current view mode on /all. When "map", a hidden `view` input is added so
+   * form submissions preserve the map view instead of falling back to list.
+   */
+  view?: 'list' | 'map';
 }
-const { filters, locations, regions = REGIONS, tags, cuisines } = Astro.props;
+const { filters, locations, regions = REGIONS, tags, cuisines, view = 'list' } = Astro.props;
+const clearAllHref = view === 'map' ? '/all?view=map' : '/all';
 
 const vibes = tags.filter((t) => t.category === 'vibe');
 const isOn = (arr: string[] | undefined, v: string) => (arr ?? []).includes(v);
 
-const sort = filters.sort ?? 'rating';
+const sort = filters.sort ?? 'name';
 const sortLabels: Record<string, string> = {
   rating: 'Best first',
   recent: 'Recently visited',
@@ -86,6 +92,10 @@ for (const tier of filters.price ?? []) {
 }
 ---
 <form class="filter-bar" method="get" action="/all">
+  {/* Preserve the active view (map/list) when submitting filters — without
+      this, the GET form rebuilds the query string from form fields only and
+      the user gets bounced back to list view. */}
+  {view === 'map' && <input type="hidden" name="view" value="map" />}
   <div class="bar-inner">
     {/* Row 1: search + main pills (cuisine, location, sort, top-rated) */}
     <div class="primary-row">
@@ -169,8 +179,8 @@ for (const tier of filters.price ?? []) {
       </div>
 
       <div class="pill-select" data-name="sort">
-        <input type="hidden" name="sort" value={sort === 'rating' ? '' : sort} />
-        <button type="button" class:list={['pill', { on: sort !== 'rating' }]} data-pill-trigger>
+        <input type="hidden" name="sort" value={sort === 'name' ? '' : sort} />
+        <button type="button" class:list={['pill', { on: sort !== 'name' }]} data-pill-trigger>
           <span class="meta">Sort</span>
           <span class="label">{sortLabels[sort]}</span>
           <span class="caret" aria-hidden="true">
@@ -180,9 +190,9 @@ for (const tier of filters.price ?? []) {
           </span>
         </button>
         <div class="panel" hidden>
-          <button type="button" class:list={['opt', { on: sort === 'rating' }]} data-value="">Best first</button>
+          <button type="button" class:list={['opt', { on: sort === 'name' }]} data-value="">A to Z</button>
+          <button type="button" class:list={['opt', { on: sort === 'rating' }]} data-value="rating">Best first</button>
           <button type="button" class:list={['opt', { on: sort === 'recent' }]} data-value="recent">Recently visited</button>
-          <button type="button" class:list={['opt', { on: sort === 'name' }]} data-value="name">A to Z</button>
         </div>
       </div>
 
@@ -250,7 +260,7 @@ for (const tier of filters.price ?? []) {
           </button>
         ))}
         {hasFilters && (
-          <a href="/all" class="clear-all">Clear all</a>
+          <a href={clearAllHref} class="clear-all">Clear all</a>
         )}
       </div>
     )}
