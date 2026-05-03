@@ -1,19 +1,24 @@
 ---
 import { ClientRouter } from 'astro:transitions';
+import SEO from '../components/SEO.astro';
 
 interface Props {
   title: string;
   description?: string;
+  /** Path or absolute URL — used for OG/Twitter card. Restaurant pages pass
+   *  the cover photo so iMessage/Slack previews look great. */
+  image?: string;
+  imageAlt?: string;
+  type?: 'website' | 'article';
 }
-const { title, description = 'A running log of where I eat in Sydney.' } = Astro.props;
+const { title, description, image, imageAlt, type } = Astro.props;
 ---
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content={description} />
-    <title>{title}</title>
+    <SEO title={title} description={description} image={image} imageAlt={imageAlt} type={type} />
     <link rel="preconnect" href="https://places.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://photos.lucaseatsbig.com" crossorigin />
     <link rel="dns-prefetch" href="https://places.googleapis.com" />

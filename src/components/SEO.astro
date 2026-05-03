@@ -1,0 +1,61 @@
+---
+/**
+ * Drop-in SEO meta tag component. Renders <title>, description, canonical,
+ * Open Graph, and Twitter Card tags. Pass `image` per-page (e.g. a restaurant's
+ * cover photo) for rich link previews on iMessage/Slack/Twitter.
+ *
+ * Image guidance: Open Graph wants ~1200x630, min 600x315. Restaurant cover
+ * photos uploaded by the admin flow go up to 2000px and work fine; Google
+ * Places photos served via /api/places-photo also work.
+ */
+interface Props {
+  title: string;
+  description?: string;
+  /** Absolute URL or path-from-root. Resolved against site URL automatically. */
+  image?: string;
+  imageAlt?: string;
+  type?: 'website' | 'article';
+  noindex?: boolean;
+}
+
+const DEFAULT_DESCRIPTION = 'A running list of Sydney spots Lucas has eaten at, ranked honestly. Filter by region, cuisine, vibe, or rating.';
+const DEFAULT_IMAGE = '/instagram-profile.png';
+
+const {
+  title,
+  description = DEFAULT_DESCRIPTION,
+  image,
+  imageAlt,
+  type = 'website',
+  noindex = false,
+} = Astro.props;
+
+// Astro.site is set in astro.config.mjs; resolve canonical + image absolutely
+// so social-card scrapers (which don't run JS) get fully-qualified URLs.
+const siteUrl = Astro.site ?? new URL('https://lucaseatsbig.com');
+const canonical = new URL(Astro.url.pathname, siteUrl).toString();
+const ogImageUrl = (() => {
+  const raw = image ?? DEFAULT_IMAGE;
+  if (raw.startsWith('http')) return raw;
+  return new URL(raw, siteUrl).toString();
+})();
+---
+<title>{title}</title>
+<meta name="description" content={description} />
+<link rel="canonical" href={canonical} />
+{noindex && <meta name="robots" content="noindex, nofollow" />}
+
+<!-- Open Graph (Facebook, iMessage, Slack, LinkedIn, Discord) -->
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={canonical} />
+<meta property="og:type" content={type} />
+<meta property="og:site_name" content="Lucas Eats Big" />
+<meta property="og:image" content={ogImageUrl} />
+{imageAlt && <meta property="og:image:alt" content={imageAlt} />}
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={ogImageUrl} />

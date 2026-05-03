@@ -5,6 +5,7 @@ import Masthead from '../components/Masthead.astro';
 import FilterBar from '../components/FilterBar.astro';
 import MobileFilterSheet from '../components/MobileFilterSheet.astro';
 import HomeListCard from '../components/HomeListCard.astro';
+import MapView from '../components/MapView.astro';
 import PageHead from '../components/PageHead.astro';
 import { getCuisines, getLocationsInUse, getTags, searchRestaurants } from '../lib/db';
 import { REGIONS } from '../lib/regions';
@@ -54,6 +55,12 @@ const filters: Filters = {
   sort,
 };
 
+// View mode (list/map) is part of the URL so it survives back-navigation and
+// link sharing. Threaded into FilterBar and MobileFilterSheet so their forms
+// preserve it on submit; otherwise GET-form submission strips the param.
+const view = sp.get('view') === 'map' ? 'map' : 'list';
+const clearAllHref = view === 'map' ? '/all?view=map' : '/all';
+
 const [restaurants, locations, tags, cuisines] = await Promise.all([
   searchRestaurants(env.DB, filters),
   getLocationsInUse(env.DB),
@@ -65,6 +72,7 @@ const inUseSuburbSlugs = new Set(locations.map((l) => l.slug));
 const regions = REGIONS.filter((r) => r.suburbs.some((s) => inUseSuburbSlugs.has(s)));
 
 const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
+const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
 ---
 <BaseLayout title="All places · Lucas Eats Big">
   <Masthead active="all" />
@@ -75,43 +83,146 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
   </PageHead>
 
   <div class="filterbar-desktop">
-    <FilterBar filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} />
+    <FilterBar filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} view={view} />
   </div>
-  <MobileFilterSheet filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} count={restaurants.length} />
+  <MobileFilterSheet filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} count={restaurants.length} view={view} />
 
-  <section class="results">
-    <p class="count">
-      {restaurants.length} {restaurants.length === 1 ? 'place' : 'places'}
-    </p>
-    <div class="results-list">
-      {restaurants.map((r) => (
-        <HomeListCard restaurant={r} photosBase={photosBase} compact />
-      ))}
+  <section class="results" data-view="list">
+    <div class="results-head">
+      <p class="count">
+        {restaurants.length} {restaurants.length === 1 ? 'place' : 'places'}
+      </p>
+      {restaurants.length > 0 && (
+        <div class="view-toggle" role="tablist" aria-label="View mode">
+          <button type="button" class="view-tab is-active" data-view="list" role="tab" aria-selected="true">List</button>
+          <button type="button" class="view-tab" data-view="map" role="tab" aria-selected="false">Map</button>
+        </div>
+      )}
     </div>
+
+    <div class="view view-list">
+      <div class="results-list">
+        {restaurants.map((r) => (
+          <HomeListCard restaurant={r} photosBase={photosBase} compact />
+        ))}
+      </div>
+    </div>
+
+    {restaurants.length > 0 && (
+      <div class="view view-map">
+        <MapView items={restaurants} photosBase={photosBase} apiKey={googleMapsKey} />
+      </div>
+    )}
+
     {restaurants.length === 0 && (
       <div class="empty">
         <h2>Nothing's hitting today.</h2>
         <p>Try clearing a filter, or send me a place I should add to the list.</p>
         <div class="empty-actions">
-          <a href="/all" class="btn-clear">Clear filters</a>
+          <a href={clearAllHref} class="btn-clear">Clear filters</a>
           <a href="https://instagram.com/lucaseatsbig" target="_blank" rel="noopener noreferrer" class="btn-dm">DM @lucaseatsbig</a>
         </div>
       </div>
     )}
   </section>
+
+  <script>
+    function setupViewToggle() {
+      const root = document.querySelector<HTMLElement>('.results[data-view]');
+      if (!root || root.dataset.viewToggleReady === '1') return;
+      root.dataset.viewToggleReady = '1';
+
+      const tabs = root.querySelectorAll<HTMLButtonElement>('.view-tab');
+
+      function setView(view: 'list' | 'map', persist: boolean) {
+        if (root!.dataset.view === view) return;
+        root!.dataset.view = view;
+        tabs.forEach((t) => {
+          const active = t.dataset.view === view;
+          t.classList.toggle('is-active', active);
+          t.setAttribute('aria-selected', String(active));
+        });
+        if (persist) {
+          // Push to history so back-nav from a restaurant detail page returns
+          // to the same view. Replace, not push, so multiple toggles don't
+          // bloat the history stack.
+          const url = new URL(window.location.href);
+          if (view === 'map') url.searchParams.set('view', 'map');
+          else url.searchParams.delete('view');
+          window.history.replaceState({}, '', url.toString());
+        }
+        if (view === 'map') {
+          window.__lucaseatsMap?.init();
+          window.__lucaseatsMap?.invalidate();
+        }
+      }
+
+      tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+          const view = tab.dataset.view as 'list' | 'map';
+          if (view) setView(view, true);
+        });
+      });
+
+      // On load, honor `?view=map` so back-nav (and shareable links) restore
+      // the previous mode without re-toggling.
+      const initial = new URLSearchParams(window.location.search).get('view');
+      if (initial === 'map') setView('map', false);
+    }
+
+    setupViewToggle();
+    // Astro's ClientRouter swaps the DOM on soft navs; rerun setup each time.
+    document.addEventListener('astro:page-load', setupViewToggle);
+  </script>
 </BaseLayout>
 
 <style>
   .results {
     padding: 2rem 1rem 4rem;
-    max-width: 1280px;
+    max-width: 1180px;
     margin: 0 auto;
+  }
+  .results-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0 0 1rem;
   }
   .count {
     color: var(--muted);
-    margin: 0 0 1rem;
+    margin: 0;
     font-size: 0.875rem;
   }
+  .view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 2px;
+    background: var(--bg);
+  }
+  .view-tab {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 0.4rem 0.95rem;
+    border-radius: 999px;
+    font-family: var(--sans);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  .view-tab:hover { color: var(--ink); }
+  .view-tab.is-active {
+    background: var(--ink);
+    color: var(--bg);
+  }
+  /* View switching — hide whichever view is not active. */
+  .view { display: none; }
+  .results[data-view="list"] .view-list { display: block; }
+  .results[data-view="map"] .view-map { display: block; }
   .results-list {
     display: grid;
     grid-template-columns: 1fr;
@@ -129,7 +240,10 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
     .filterbar-desktop { display: none; }
     /* Count is shown in the mobile filter bar's sort row; hide the duplicate. */
     .results .count { display: none; }
+    /* With the count hidden, push the lone toggle to the right. */
+    .results-head { justify-content: flex-end; margin-bottom: 0.75rem; }
   }
+
   @media (max-width: 600px) {
     .results { padding: 1rem 1rem 3rem; }
   }

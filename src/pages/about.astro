@@ -69,14 +69,19 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
           </div>
         </div>
       </div>
-      <p>If I've been more than once, the number you see is the average across visits. Each visit also has a separate <em>size</em> rating from 1–10, relative to its category. A 9-size burger is huge for a burger, not huge in absolute terms (10 = hard to finish, 1 = barely a snack).</p>
-      <p>There's also a <em>would return</em> flag on every visit. Sometimes a place rates a 6 but I'd 100% go back; sometimes an 8 and I'm done with it. The flag captures that separately from the score.</p>
+      <p>If I've been more than once, the number you see is the average across visits.</p>
+
+      <h3 class="sub-head">Size rating</h3>
+      <p>Each visit also has a <em>size</em> score from 1 to 10, relative to category. A 9-size burger means huge for a burger, not in absolute terms — 10 is hard to finish, 1 is barely a snack.</p>
+
+      <h3 class="sub-head">Would return</h3>
+      <p>Every visit has a <em>would return</em> flag too. Sometimes a place rates a 6 but I'd 100% go back; sometimes an 8 and I'm done with it. The flag captures that separately from the score.</p>
 
       {exampleRestaurant && (
         <>
           <p class="example-label">For example:</p>
           <div class="example-card">
-            <HomeListCard restaurant={exampleRestaurant} photosBase={photosBase} />
+            <HomeListCard restaurant={exampleRestaurant} photosBase={photosBase} compact />
           </div>
         </>
       )}
@@ -264,6 +269,18 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
     letter-spacing: -0.015em;
     margin: 2.5rem 0 1rem;
   }
+  /* Sub-heads under H2 sections — used for "Size rating", "Would return".
+     Serif italic to match the editorial heading style, scaled down so they
+     read as sub-sections rather than competing with the H2. */
+  .prose .sub-head {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    margin: 1.75rem 0 0.5rem;
+  }
   .prose ul {
     list-style: none;
     padding: 0;
@@ -349,6 +366,7 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
   }
   .example-card {
     margin: 0 0 1.5rem;
+    max-width: 560px;
   }
   .prose ul.filters {
     gap: 1rem;

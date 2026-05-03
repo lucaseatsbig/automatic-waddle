@@ -5,3 +5,7 @@ PUBLIC_PHOTOS_URL=https://photos.lucaseatsbig.com
 # Create a key in Google Cloud Console, enable "Places API (New)" + "Maps JavaScript API",
 # and restrict it to your domain(s). Leave blank to disable the autocomplete.
 GOOGLE_MAPS_API_KEY=
+# Optional: Anthropic API key for the offline guide-generation script
+# (scripts/generate-cuisine-guides.mjs). Not used at runtime.
+# Get a key at console.anthropic.com.
+ANTHROPIC_API_KEY=

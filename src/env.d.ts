@@ -7,4 +7,8 @@ interface Env {
   SESSION_SECRET?: string;
   PUBLIC_PHOTOS_URL?: string;
   GOOGLE_MAPS_API_KEY?: string;
+  /** Anthropic API key — only required by the offline guide-generation
+   *  script (`scripts/generate-cuisine-guides.mjs`). The runtime worker
+   *  doesn't call Claude directly. */
+  ANTHROPIC_API_KEY?: string;
 }

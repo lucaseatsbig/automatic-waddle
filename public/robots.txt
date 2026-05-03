@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api
+
+Sitemap: https://lucaseatsbig.com/sitemap-index.xml
+Sitemap: https://lucaseatsbig.com/sitemap-restaurants.xml
+Sitemap: https://lucaseatsbig.com/sitemap-guides.xml

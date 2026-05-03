@@ -107,11 +107,10 @@ const heroPick = pickRestaurant
   <HomeHero kicker="SYDNEY · UPDATED WEEKLY" igHandle="lucaseatsbig" stats={heroStats} pick={heroPick}>
     <Fragment slot="title">
       Hi, I'm Lucas.<br />
-      This is <em>everywhere I've eaten</em> and what I think of it.
+      This is <em>everywhere I've eaten</em> and my honest thoughts.
     </Fragment>
-    <Fragment slot="lede">
-      A running list of Sydney spots I've been to, ranked honestly. Friends keep asking me where to eat, so I made this for them.
-      Browse by location, vibe, or rating by jumping to <a href="/all">the full database</a>.
+    <Fragment slot="cta">
+      <a href="/all" class="hero-cta">Browse the database <span class="arrow" aria-hidden="true">→</span></a>
     </Fragment>
   </HomeHero>
 
@@ -193,9 +192,9 @@ const heroPick = pickRestaurant
 
   /* Sections */
   section[class$='-section'] {
-    max-width: 1280px;
+    max-width: 1180px;
     margin: 0 auto;
-    padding: 3rem 1.5rem 1rem;
+    padding: 2.75rem 1.5rem 1rem;
   }
   .section-head {
     display: flex;
@@ -266,7 +265,7 @@ const heroPick = pickRestaurant
 
   /* Footer */
   .site-footer {
-    max-width: 1280px;
+    max-width: 1180px;
     margin: 0 auto;
     padding: 4rem 1.5rem 2.5rem;
     border-top: 1px solid var(--rule);

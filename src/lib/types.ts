@@ -30,6 +30,8 @@ export interface RestaurantCardData {
   latest_meal_type: string | null;
   cover_r2_key: string | null;
   hero_photo_name: string | null;
+  lat: number | null;
+  lng: number | null;
   tags: { slug: string; label: string; category: TagCategory }[];
 }
 

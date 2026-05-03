@@ -18,12 +18,15 @@
     "astro": "astro"
   },
   "dependencies": {
-  "@astrojs/cloudflare": "^13.0.0",
-  "astro": "^6.0.0"
-},
+    "@anthropic-ai/sdk": "^0.92.0",
+    "@astrojs/cloudflare": "^13.0.0",
+    "astro": "^6.0.0",
+    "marked": "^18.0.3"
+  },
   "devDependencies": {
-  "@cloudflare/workers-types": "^4.20250101.0",
-  "typescript": "^5.6.0",
-  "wrangler": "^4.0.0"
-}
+    "@astrojs/sitemap": "^3.7.2",
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
 }

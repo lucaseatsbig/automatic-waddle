@@ -47,7 +47,6 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
       )}
     </p>
     <h1><slot name="title" /></h1>
-    <p class="lede"><slot name="lede" /></p>
 
     {stats.length > 0 && (
       <div class="stats">
@@ -57,6 +56,7 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
             <div class="stat-label">{s.label}</div>
           </div>
         ))}
+        <slot name="cta" />
       </div>
     )}
   </div>
@@ -65,7 +65,7 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
     <aside class="hh-pick" aria-label="This week's pick">
       <a href={pick.href} class="pick-photo">
         {pick.photoUrl
-          ? <img src={pick.photoUrl} alt={pick.name} loading="eager" decoding="async" />
+          ? <img src={pick.photoUrl} alt={pick.name} width="800" height="800" loading="eager" decoding="async" />
           : <div class="pick-placeholder" aria-hidden="true">{pick.name.charAt(0).toUpperCase()}</div>}
       </a>
       <a href={pick.href} class="pick-callout">
@@ -81,9 +81,9 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
 
 <style>
   .home-hero {
-    max-width: 1280px;
+    max-width: 1180px;
     margin: 0 auto;
-    padding: clamp(2.5rem, 8vw, 4.5rem) 1.5rem 2rem;
+    padding: clamp(1.5rem, 5vw, 3rem) 1.5rem 0.5rem;
     display: grid;
     grid-template-columns: 1fr;
     gap: 2.5rem;
@@ -93,9 +93,9 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
   }
   @media (min-width: 900px) {
     .home-hero {
-      grid-template-columns: 1.4fr 1fr;
-      gap: 3.5rem;
-      align-items: start;
+      grid-template-columns: 1.55fr 1fr;
+      gap: 1.5rem;
+      align-items: end;
     }
   }
 
@@ -106,7 +106,7 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
     letter-spacing: 0.18em;
     color: var(--muted);
     font-weight: 600;
-    margin: 0 0 1.5rem;
+    margin: 0 0 1rem;
     text-transform: uppercase;
   }
   .kicker::before {
@@ -140,12 +140,13 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
     .kicker-handle-icon { display: inline-flex; }
   }
 
-  /* Headline — bigger than PageHead's at the top of the desktop clamp */
+  /* Headline — slightly smaller than the original spec so the headline doesn't
+     dominate the viewport and the cards beneath it are more visible. */
   .hh-text h1 {
     font-family: var(--serif);
-    font-size: clamp(2.4rem, 7vw, 5.25rem);
+    font-size: clamp(2rem, 5.8vw, 4.25rem);
     font-weight: 500;
-    line-height: 1.02;
+    line-height: 1.04;
     letter-spacing: -0.025em;
     color: var(--ink);
     margin: 0;
@@ -156,28 +157,65 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
     font-weight: 500;
   }
 
-  .lede {
-    margin: 1.5rem 0 0;
-    color: var(--muted);
-    font-size: 1rem;
-    line-height: 1.6;
-    max-width: 56ch;
-  }
-  .lede :global(a) {
-    color: var(--terracotta);
-    text-decoration: none;
-    border-bottom: 1px solid var(--terracotta);
-  }
-  .lede :global(a:hover) { background: rgba(184, 84, 58, 0.08); }
 
-  /* Stats strip — small editorial dashboard under the lede */
+  /* Hero CTA — pill button rendered via the optional `cta` slot. Uses the
+     terracotta accent at full saturation to draw the eye toward the main
+     "browse the database" entry point. */
+  /* Hero CTA — clean single-line pill that sits at the right end of the
+     stats row. Soft terracotta with a layered shadow for a bit of lift, and
+     an arrow that nudges right on hover. */
+  .hh-text :global(.hero-cta) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+    padding: 0.6rem 1.15rem;
+    background: var(--terracotta);
+    color: var(--bg);
+    border-radius: 999px;
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow:
+      0 1px 2px rgba(184, 84, 58, 0.2),
+      0 4px 14px rgba(184, 84, 58, 0.12);
+    transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  }
+  .hh-text :global(.hero-cta:hover) {
+    background: var(--ink);
+    transform: translateY(-1px);
+    box-shadow:
+      0 2px 4px rgba(26, 40, 32, 0.18),
+      0 8px 20px rgba(26, 40, 32, 0.14);
+  }
+  .hh-text :global(.hero-cta .arrow) {
+    display: inline-block;
+    transition: transform 0.2s ease;
+    font-size: 1.05em;
+    line-height: 1;
+  }
+  .hh-text :global(.hero-cta:hover .arrow) {
+    transform: translateX(3px);
+  }
+
+  /* Stats strip — small editorial dashboard under the headline. The optional
+     CTA slot lives at the end of this row (margin-left: auto) so it sits next
+     to the last stat. align-items: baseline lines the button's text up with
+     each stat's big number rather than centring on the stat block. */
   .stats {
-    margin-top: 2rem;
-    padding-top: 1.5rem;
+    margin-top: 1.6rem;
+    padding-top: 1.2rem;
     border-top: 1px solid var(--rule);
     display: flex;
     flex-wrap: wrap;
-    gap: 2rem;
+    align-items: baseline;
+    gap: 1.25rem 1.6rem;
+  }
+  .stats :global(.hero-cta) {
+    margin-left: 0.75rem;
   }
   .stat-num {
     font-family: var(--serif);
@@ -216,7 +254,7 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
   .pick-photo {
     display: block;
     width: 100%;
-    aspect-ratio: 4 / 5;
+    aspect-ratio: 1 / 1;
     border-radius: 18px;
     overflow: hidden;
     background: var(--paper);
@@ -249,15 +287,15 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
 
   .pick-callout {
     position: absolute;
-    bottom: -16px;
-    left: -16px;
+    bottom: 0;
+    left: -18px;
     background: var(--bg);
     border: 1px solid var(--rule);
-    border-radius: 10px;
-    padding: 12px 16px;
+    border-radius: 12px;
+    padding: 17px 26px 19px;
     text-decoration: none;
     color: inherit;
-    box-shadow: 0 4px 12px rgba(26, 40, 32, 0.06);
+    box-shadow: 0 6px 20px rgba(26, 40, 32, 0.1);
     transition: border-color 0.1s;
   }
   @media (hover: hover) {
@@ -265,16 +303,16 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
   }
   .pick-kicker {
     font-family: var(--sans);
-    font-size: 0.625rem;
+    font-size: 0.8125rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     font-weight: 600;
     color: var(--terracotta);
-    margin-bottom: 0.3rem;
+    margin-bottom: 0.45rem;
   }
   .pick-name {
     font-family: var(--serif);
-    font-size: 1.0625rem;
+    font-size: 1.5rem;
     font-weight: 500;
     color: var(--ink);
     line-height: 1.2;
@@ -282,8 +320,8 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
   }
   .pick-meta {
     font-family: var(--sans);
-    font-size: 0.71875rem;
+    font-size: 0.9375rem;
     color: var(--muted);
-    margin-top: 0.2rem;
+    margin-top: 0.4rem;
   }
 </style>

@@ -566,6 +566,30 @@ export async function getSimilarByCuisine(
     .bind(cuisine, excludeId, limit)
     .all<Record<string, unknown>>();
 
+  // Fetch tags for the matching restaurants in a single follow-up query so
+  // the "More X I love" cards on the detail page can render chips just like
+  // the home/all cards.
+  const ids = results.map((r) => r.id as number);
+  const tagsByRestaurant = new Map<number, { slug: string; label: string; category: TagCategory }[]>();
+  if (ids.length > 0) {
+    const tagSql = `
+      SELECT rt.restaurant_id, t.slug, t.label, t.category
+      FROM restaurant_tags rt
+      JOIN tags t ON t.id = rt.tag_id
+      WHERE rt.restaurant_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY t.category, t.label
+    `;
+    const { results: tagRows } = await db
+      .prepare(tagSql)
+      .bind(...ids)
+      .all<{ restaurant_id: number; slug: string; label: string; category: TagCategory }>();
+    for (const row of tagRows) {
+      const arr = tagsByRestaurant.get(row.restaurant_id) ?? [];
+      arr.push({ slug: row.slug, label: row.label, category: row.category });
+      tagsByRestaurant.set(row.restaurant_id, arr);
+    }
+  }
+
   return results.map((r): RestaurantCardData => ({
     id: r.id as number,
     slug: r.slug as string,
@@ -583,7 +607,7 @@ export async function getSimilarByCuisine(
     hero_photo_name: (r.hero_photo_name as string | null) ?? null,
     lat: (r.lat as number | null) ?? null,
     lng: (r.lng as number | null) ?? null,
-    tags: [],
+    tags: tagsByRestaurant.get(r.id as number) ?? [],
   }));
 }
 

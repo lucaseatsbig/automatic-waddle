@@ -38,15 +38,18 @@ const tier = value == null ? null : value >= 9 ? 'high' : value >= 7 ? 'mid' : '
   .rating-lg .num   { font-size: 32px; }
   .rating-lg .denom { font-size: 14px; }
 
-  /* High tier — filled pill (9.0+) */
+  /* High tier — filled pill (9.0+).
+     Vertical padding is zero so the pill's box is the same height as a
+     plain-text rating; otherwise the taller pill visually pushes the
+     meta-line on cards where it's anchored to the top of the title row. */
   .rating-high {
     background: var(--terracotta);
     color: var(--bg);
-    padding: 5px 11px;
+    padding: 0 11px;
     border-radius: 999px;
   }
-  .rating-high.rating-sm { padding: 3px 8px;  }
-  .rating-high.rating-lg { padding: 7px 14px; }
+  .rating-high.rating-sm { padding: 0 8px;  }
+  .rating-high.rating-lg { padding: 0 14px; }
   .rating-high .denom { opacity: 0.75; }
 
   /* Mid tier — terracotta number, muted denom (7.0–8.9) */

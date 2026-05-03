@@ -2,7 +2,7 @@
 import { env } from 'cloudflare:workers';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Masthead from '../../components/Masthead.astro';
-import RestaurantCard from '../../components/RestaurantCard.astro';
+import HomeListCard from '../../components/HomeListCard.astro';
 import { getRestaurantBySlug, getSimilarByCuisine } from '../../lib/db';
 import { fetchPlacePhotos, placePhotoUrl, type PlacesPhoto } from '../../lib/places';
 
@@ -31,6 +31,14 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
 const priceSymbol = restaurant.price_tier ? '$'.repeat(restaurant.price_tier) : null;
 const ratingFmt = restaurant.avg_overall != null ? restaurant.avg_overall.toFixed(1) : null;
 const visited = restaurant.visit_count > 0;
+
+const sizeValues = restaurant.reviews
+  .map((rv) => rv.rating_size)
+  .filter((n): n is number => n != null);
+const avgSize = sizeValues.length > 0
+  ? sizeValues.reduce((a, b) => a + b, 0) / sizeValues.length
+  : null;
+const sizeFmt = avgSize != null ? avgSize.toFixed(1) : null;
 
 // Hero image priority: Places photo → user cover photo → placeholder
 let heroSrc: string | null = null;
@@ -66,8 +74,38 @@ function formatLongDate(iso: string | null): string | null {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
 }
+// Build an SEO-friendly description from the latest review's commentary
+// (truncated) or fall back to the wishlist note / cuisine-suburb summary.
+// `restaurant` is passed in explicitly so TS narrowing from the early-return
+// null check survives into the function body.
+function buildSeoDescription(r: NonNullable<typeof restaurant>): string {
+  const latest = r.reviews[0];
+  if (latest?.commentary) {
+    const t = latest.commentary.replace(/\s+/g, ' ').trim();
+    return t.length > 160 ? t.slice(0, 157).trimEnd() + '…' : t;
+  }
+  if (r.wishlist_note) {
+    const t = r.wishlist_note.replace(/\s+/g, ' ').trim();
+    return t.length > 160 ? t.slice(0, 157).trimEnd() + '…' : t;
+  }
+  const parts = [r.cuisine, r.location].filter(Boolean);
+  return parts.length > 0
+    ? `${r.name} — ${parts.join(' · ')}. On Lucas Eats Big.`
+    : `${r.name} on Lucas Eats Big.`;
+}
+const seoDescription = buildSeoDescription(restaurant);
+// Route the OG image through /api/og/[slug].jpg so social scrapers always
+// receive a 1200×630 cover-cropped JPEG — Google Places' source photos are
+// arbitrary aspect ratios and unfurl as oversized portraits otherwise.
+const seoImage = `/api/og/${restaurant.slug}.jpg`;
 ---
-<BaseLayout title={`${restaurant.name} · Lucas Eats Big`}>
+<BaseLayout
+  title={`${restaurant.name} · Lucas Eats Big`}
+  description={seoDescription}
+  image={seoImage}
+  imageAlt={heroAlt || restaurant.name}
+  type="article"
+>
   <Masthead active="all" />
   <main class="page">
     <div class="back-link">
@@ -122,8 +160,18 @@ function formatLongDate(iso: string | null): string | null {
       <aside class="rating-card">
         {visited && ratingFmt ? (
           <>
-            <div class="block-label">LUCAS' RATING</div>
-            <div class="big-rating">{ratingFmt}<span class="denom">/10</span></div>
+            <div class="rating-headline">
+              <div class="rating-block">
+                <div class="block-label">LUCAS' RATING</div>
+                <div class="big-rating">{ratingFmt}<span class="denom">/10</span></div>
+              </div>
+              {sizeFmt && (
+                <div class="rating-block">
+                  <div class="block-label">SIZE</div>
+                  <div class="big-rating">{sizeFmt}<span class="denom">/10</span></div>
+                </div>
+              )}
+            </div>
             <div class="rating-sub">
               {restaurant.visit_count === 1 ? '1 visit' : `across ${restaurant.visit_count} visits`}
             </div>
@@ -224,7 +272,7 @@ function formatLongDate(iso: string | null): string | null {
         </h2>
         <div class="similar-grid">
           {similar.map((r) => (
-            <RestaurantCard restaurant={r} photosBase={photosBase} />
+            <HomeListCard restaurant={r} photosBase={photosBase} compact />
           ))}
         </div>
       </section>
@@ -240,19 +288,22 @@ function formatLongDate(iso: string | null): string | null {
 
 <style>
   .page {
-    max-width: 980px;
+    max-width: 1180px;
     margin: 0 auto;
-    padding: 1.5rem 1.25rem 4rem;
+    padding: 1.5rem 1.5rem 4rem;
   }
   @media (max-width: 768px) {
     /* Reserve space for the sticky bottom CTA so the last bit of content
        isn't hidden behind it on mobile. */
     .page { padding-bottom: 5rem; }
-    /* Hide the inline desktop "Open in Maps" — the sticky bottom CTA covers it. */
-    .maps-btn-desktop { display: none; }
+    /* Hide the inline desktop "Open in Maps" — the sticky bottom CTA covers it.
+       Specificity matters here: `.maps-btn { display: block }` is defined later
+       in source with equal specificity, so it would win without the chained
+       class to bump us above it. */
+    .maps-btn.maps-btn-desktop { display: none; }
     /* Without "Open in Maps" above it, the website button no longer needs the
        margin-top spacing meant to separate two stacked buttons. */
-    .website-btn { margin-top: 1rem; }
+    .maps-btn.website-btn { margin-top: 1rem; }
   }
 
   /* Sticky "Open in Maps" CTA — mobile only. Desktop has the inline button
@@ -418,6 +469,15 @@ function formatLongDate(iso: string | null): string | null {
     font-weight: 600;
     text-transform: uppercase;
   }
+  /* Headline row: "LUCAS' RATING" + optional "SIZE" side-by-side, both
+     using the same big-rating treatment. Falls back to a single column when
+     size data is missing or the place is on the wishlist. */
+  .rating-headline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem 2rem;
+  }
+  .rating-block { min-width: 0; }
   .big-rating {
     font-family: var(--serif);
     font-size: 2.5rem;
@@ -451,7 +511,7 @@ function formatLongDate(iso: string | null): string | null {
   .rating-meta {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
+    gap: 0.75rem 1rem;
   }
   .meta-value {
     font-family: var(--sans);
@@ -632,11 +692,17 @@ function formatLongDate(iso: string | null): string | null {
   }
 
 
-  /* Similar */
+  /* Similar — same horizontal compact card style as home/all, 2-col on desktop */
   .similar { margin-top: 3rem; }
   .similar-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-    gap: 1rem;
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+  @media (min-width: 900px) {
+    .similar-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem 0.875rem;
+    }
   }
 </style>

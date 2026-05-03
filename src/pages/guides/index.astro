@@ -1,0 +1,172 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Masthead from '../../components/Masthead.astro';
+import PageHead from '../../components/PageHead.astro';
+import { listPublishedPosts } from '../../lib/posts';
+import { placePhotoUrl } from '../../lib/places';
+
+const posts = await listPublishedPosts(env.DB);
+const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
+
+function postCover(p: typeof posts[number]): string | null {
+  if (p.og_image_cover_r2_key && photosBase) {
+    return `${photosBase}/${p.og_image_cover_r2_key}`;
+  }
+  if (p.og_image_hero_photo_name) {
+    return placePhotoUrl(p.og_image_hero_photo_name, 600);
+  }
+  return null;
+}
+---
+<BaseLayout
+  title="Guides · Lucas Eats Big"
+  description="Hand-curated lists of the best Sydney restaurants by cuisine — every entry is somewhere I've actually eaten."
+>
+  <Masthead active="all" />
+
+  <PageHead kicker="GUIDES · BROWSE" wideLede>
+    <Fragment slot="title">Guides to <em>where to eat</em>.</Fragment>
+    <Fragment slot="lede">
+      Curated lists by cuisine, drawn from every place I've visited and rated.
+      Every restaurant linked is one I've actually been to.
+    </Fragment>
+  </PageHead>
+
+  <main class="guides-list">
+    {posts.length === 0 ? (
+      <div class="empty">
+        <h2>No guides yet.</h2>
+        <p>Coming soon — the first batch is being written.</p>
+      </div>
+    ) : (
+      <div class="grid">
+        {posts.map((p) => {
+          const cover = postCover(p);
+          return (
+            <a href={`/guides/${p.slug}`} class="guide-card">
+              <div class="thumb">
+                {cover
+                  ? <img src={cover} alt="" loading="lazy" decoding="async" />
+                  : <div class="placeholder" aria-hidden="true">{p.title.charAt(0)}</div>}
+              </div>
+              <div class="body">
+                <div class="kind">{p.kind}</div>
+                <h2>{p.title}</h2>
+                <p>{p.description}</p>
+              </div>
+            </a>
+          );
+        })}
+      </div>
+    )}
+  </main>
+</BaseLayout>
+
+<style>
+  .guides-list {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 1rem 1.5rem 4rem;
+  }
+  @media (max-width: 600px) {
+    .guides-list { padding: 1rem 1rem 3rem; }
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  @media (min-width: 720px) {
+    .grid { grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  }
+  @media (min-width: 1080px) {
+    .grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .guide-card {
+    display: block;
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--bg);
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.1s, transform 0.1s;
+  }
+  @media (hover: hover) {
+    .guide-card:hover { border-color: var(--terracotta); }
+  }
+  .thumb {
+    aspect-ratio: 16 / 10;
+    background: var(--paper);
+    overflow: hidden;
+  }
+  .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--serif);
+    font-size: 3rem;
+    color: var(--muted);
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--paper) 0,
+      var(--paper) 12px,
+      rgba(26, 40, 32, 0.04) 12px,
+      rgba(26, 40, 32, 0.04) 24px
+    );
+  }
+  .body { padding: 1rem 1.1rem 1.1rem; }
+  .kind {
+    font-family: var(--sans);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--terracotta);
+    margin-bottom: 0.4rem;
+  }
+  .body h2 {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.375rem;
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    margin: 0 0 0.55rem;
+  }
+  .body p {
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 0;
+  }
+  .empty {
+    text-align: center;
+    padding: 5rem 1rem;
+    max-width: 32rem;
+    margin: 0 auto;
+  }
+  .empty h2 {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.625rem;
+    font-weight: 500;
+    color: var(--ink);
+    margin: 0 0 0.5rem;
+  }
+  .empty p {
+    color: var(--muted);
+    margin: 0;
+  }
+</style>
