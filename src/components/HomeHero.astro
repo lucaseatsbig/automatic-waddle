@@ -144,7 +144,7 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
      dominate the viewport and the cards beneath it are more visible. */
   .hh-text h1 {
     font-family: var(--serif);
-    font-size: clamp(2rem, 5.8vw, 4.25rem);
+    font-size: clamp(2.4rem, 5.8vw, 4.25rem);
     font-weight: 500;
     line-height: 1.04;
     letter-spacing: -0.025em;
@@ -238,6 +238,19 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
      "Since last visit" has the longest label and is the first to wrap. */
   @media (max-width: 600px) {
     .stat-hide-mobile { display: none; }
+    /* Force the CTA onto its own row, flush-left, at its natural pill width.
+       The zero-height pseudo-element acts as a flex line-break. */
+    .stats::before {
+      content: '';
+      flex-basis: 100%;
+      height: 0;
+      order: 1;
+    }
+    .stats :global(.hero-cta) {
+      order: 2;
+      margin-left: 0;
+      margin-top: -0.5rem;
+    }
   }
 
   /* Side photo + pick callout — desktop only */
