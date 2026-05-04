@@ -9,7 +9,9 @@ import { getFeaturedRecent, getWishlistPreview, searchRestaurants } from '../lib
 import { placePhotoUrl } from '../lib/places';
 
 const [featuredPool, wishlistPool, allVisited] = await Promise.all([
-  getFeaturedRecent(env.DB, 10),
+  // 11 so the desktop grid can skip recentList[0] (already shown in HomeHero's
+  // "this week's pick" callout) and still render 10 cards.
+  getFeaturedRecent(env.DB, 11),
   getWishlistPreview(env.DB, 20),
   searchRestaurants(env.DB, { visited: 'yes' }),
 ]);
@@ -142,22 +144,16 @@ const heroPick = pickRestaurant
         )}
       </div>
 
-      {/* Desktop (≥900px): recentList[0] is shown in HomeHero's side-photo
-          callout, so the section's HeroCard uses recentList[1] and the
-          compact list starts at [2] to avoid a duplicate. */}
+      {/* Desktop (≥900px): no big hero card here — HomeHero's side-photo
+          callout already serves as the spotlight. We skip recentList[0]
+          (the spotlight) so the grid stays unique, and the pool is 11 so
+          the resulting 2-col grid still has 10 cards (5 rows × 2 cols). */}
       <div class="layout-desktop">
-        {recentList[1] && (
-          <div class="recent-hero">
-            <HeroCard restaurant={recentList[1]} photosBase={photosBase} />
-          </div>
-        )}
-        {recentList.length > 2 && (
-          <div class="recent-list">
-            {recentList.slice(2).map((r) => (
-              <HomeListCard restaurant={r} photosBase={photosBase} compact />
-            ))}
-          </div>
-        )}
+        <div class="recent-list">
+          {recentList.slice(1).map((r) => (
+            <HomeListCard restaurant={r} photosBase={photosBase} compact />
+          ))}
+        </div>
       </div>
 
       {visitedTotal > recentList.length && (
