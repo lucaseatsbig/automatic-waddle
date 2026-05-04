@@ -140,6 +140,50 @@ export async function getPostBySlug(
   };
 }
 
+export interface RelatedPostSummary {
+  slug: string;
+  kind: PostKind;
+  title: string;
+  description: string;
+  relation_type: string;
+  weight: number;
+  og_image_cover_r2_key: string | null;
+  og_image_hero_photo_name: string | null;
+}
+
+/**
+ * Fetch up to `limit` related published posts for the given post slug,
+ * ordered by relation weight (more shared restaurants = higher).
+ */
+export async function getRelatedPosts(
+  db: D1Database,
+  slug: string,
+  limit: number = 4
+): Promise<RelatedPostSummary[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT p.slug, p.kind, p.title, p.description, rp.relation_type, rp.weight,
+              cover.r2_key AS og_image_cover_r2_key,
+              res.hero_photo_name AS og_image_hero_photo_name
+         FROM related_posts rp
+         JOIN posts p ON p.slug = rp.related_slug AND p.status = 'published'
+         LEFT JOIN restaurants res ON res.id = p.og_image_restaurant_id
+         LEFT JOIN (
+           SELECT rv.restaurant_id, MIN(ph.r2_key) AS r2_key
+             FROM photos ph
+             JOIN reviews rv ON rv.id = ph.review_id
+            WHERE ph.is_cover = 1
+            GROUP BY rv.restaurant_id
+         ) cover ON cover.restaurant_id = p.og_image_restaurant_id
+        WHERE rp.post_slug = ?
+        ORDER BY rp.weight DESC, p.published_at DESC
+        LIMIT ?`
+    )
+    .bind(slug, limit)
+    .all<RelatedPostSummary>();
+  return results;
+}
+
 export async function getFeaturedRestaurantsForPost(
   db: D1Database,
   ids: number[]

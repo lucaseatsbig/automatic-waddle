@@ -4,9 +4,10 @@ import { marked } from 'marked';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Masthead from '../../components/Masthead.astro';
 import HomeListCard from '../../components/HomeListCard.astro';
-import { getPostBySlug, getFeaturedRestaurantsForPost } from '../../lib/posts';
+import { getPostBySlug, getFeaturedRestaurantsForPost, getRelatedPosts } from '../../lib/posts';
 import { searchRestaurants } from '../../lib/db';
 import { placePhotoUrl } from '../../lib/places';
+import RelatedGuides from '../../components/RelatedGuides.astro';
 
 const slug = Astro.params.slug;
 if (!slug) return Astro.redirect('/guides');
@@ -66,6 +67,72 @@ const itemListLd = orderedCards.length > 0
     }
   : null;
 
+// FAQ extraction — generators put a `## Frequently asked` section near the
+// end when PAA suggestions were available. We parse it into a FAQPage
+// JSON-LD blob so Google can show rich-result questions in search results.
+function extractFaq(md: string): { question: string; answer: string }[] {
+  const headingRe = /(^|\n)##\s+(?:Frequently asked|FAQs?|Questions?)\s*\n/i;
+  const m = md.match(headingRe);
+  if (!m) return [];
+  const tail = md.slice((m.index ?? 0) + m[0].length);
+  // Stop at the next H2 if there is one.
+  const stop = tail.search(/\n##\s+/);
+  const section = stop >= 0 ? tail.slice(0, stop) : tail;
+  const out: { question: string; answer: string }[] = [];
+  // Pattern: "### Question" then paragraph, OR "**Question**" then paragraph.
+  const qa = section.split(/\n(?=###\s+|\*\*[A-Z])/);
+  for (const block of qa) {
+    const headingMatch = block.match(/^(?:###\s+|\*\*)([^\n*]+?)(?:\*\*)?\s*\n([\s\S]+)$/);
+    if (!headingMatch) continue;
+    const question = headingMatch[1].trim().replace(/[?:]$/, '?');
+    const answer = headingMatch[2].trim().replace(/\n+/g, ' ');
+    if (question && answer) out.push({ question, answer });
+  }
+  return out;
+}
+
+const faqEntries = extractFaq(post.body_md);
+const faqLd = faqEntries.length > 0
+  ? {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: faqEntries.map((f) => ({
+        '@type': 'Question',
+        name: f.question,
+        acceptedAnswer: { '@type': 'Answer', text: f.answer },
+      })),
+    }
+  : null;
+
+// Article JSON-LD — gives Google the dateModified signal so freshness
+// regenerations get picked up.
+const publishedIso = post.published_at ? new Date(post.published_at * 1000).toISOString() : null;
+const modifiedIso = new Date(post.generated_at * 1000).toISOString();
+const articleLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: post.title,
+  description: post.description,
+  datePublished: publishedIso ?? modifiedIso,
+  dateModified: modifiedIso,
+  author: { '@type': 'Person', name: 'Lucas Leung' },
+  publisher: {
+    '@type': 'Organization',
+    name: 'Lucas Eats Big',
+    url: 'https://lucaseatsbig.com',
+  },
+  mainEntityOfPage: `https://lucaseatsbig.com/guides/${post.slug}`,
+};
+
+// Related guides — internal-link compounding. Wrap in try/catch so the
+// page still renders if the related_posts table hasn't been migrated yet.
+let relatedGuides: Awaited<ReturnType<typeof getRelatedPosts>> = [];
+try {
+  relatedGuides = await getRelatedPosts(env.DB, post.slug, 4);
+} catch {
+  relatedGuides = [];
+}
+
 // SEO image points at the existing /api/og endpoint when we have a featured
 // restaurant — guarantees the consistent 1200×630 cover. Falls back to the
 // raw hero source if no restaurant is set.
@@ -120,11 +187,17 @@ const updated = formatDate(post.published_at ?? post.generated_at);
         </div>
       </section>
     )}
+
+    <RelatedGuides guides={relatedGuides} photosBase={photosBase} />
   </main>
 
   {itemListLd && (
     <script type="application/ld+json" is:inline set:html={JSON.stringify(itemListLd)}></script>
   )}
+  {faqLd && (
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(faqLd)}></script>
+  )}
+  <script type="application/ld+json" is:inline set:html={JSON.stringify(articleLd)}></script>
 </BaseLayout>
 
 <style>

@@ -5,7 +5,15 @@ PUBLIC_PHOTOS_URL=https://photos.lucaseatsbig.com
 # Create a key in Google Cloud Console, enable "Places API (New)" + "Maps JavaScript API",
 # and restrict it to your domain(s). Leave blank to disable the autocomplete.
 GOOGLE_MAPS_API_KEY=
-# Optional: Anthropic API key for the offline guide-generation script
-# (scripts/generate-cuisine-guides.mjs). Not used at runtime.
+# Optional: Anthropic API key for the offline guide-generation scripts
+# (scripts/generate-*.mjs and scripts/generate.mjs). Not used at runtime.
 # Get a key at console.anthropic.com.
 ANTHROPIC_API_KEY=
+
+# Optional: People Also Ask provider for the trends crawler. Pick ONE.
+# Without either, scripts/crawl-trends.mjs falls back to autocomplete-only
+# (still works, just no PAA enrichment).
+#   - SerpAPI: reliable, ~$50/mo for 5000 queries — https://serpapi.com
+#   - ScraperAPI: cheaper (~$5/mo), less reliable — https://scraperapi.com
+SERPAPI_KEY=
+SCRAPERAPI_KEY=

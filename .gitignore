@@ -17,4 +17,9 @@ nextsteps.txt
 scripts/backfill-place-details.sql
 scripts/backfill-hero-photos.sql
 scripts/backfill-places.sql
+scripts/backfill-cuisines.sql
 scripts/notion-import.sql
+scripts/generate-cuisine-guides.sql
+scripts/generate-suburb-guides.sql
+scripts/generate-themed-guides.sql
+scripts/crawl-trends.sql

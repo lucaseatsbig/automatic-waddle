@@ -1,21 +1,14 @@
 #!/usr/bin/env node
-// AI-generated cuisine listicle bot.
+// AI-generated suburb listicle bot.
 //
 // Usage:
-//   node scripts/generate-cuisine-guides.mjs                # all eligible cuisines, draft
-//   node scripts/generate-cuisine-guides.mjs --cuisine=Italian
-//   node scripts/generate-cuisine-guides.mjs --publish      # mark posts published immediately
-//   node scripts/generate-cuisine-guides.mjs --dry-run      # log prompts, don't call API
-//   node scripts/generate-cuisine-guides.mjs --min=3        # min restaurants per cuisine (default 3)
-//   node scripts/generate-cuisine-guides.mjs --limit=5      # max cuisines per run
-//   node scripts/generate-cuisine-guides.mjs --skip-voice-check  # bypass Haiku voice check
-//
-// Reads ANTHROPIC_API_KEY from .dev.vars, queries the REMOTE D1 (source of
-// truth), calls Claude to generate one listicle per cuisine, runs a voice-
-// check pass, computes related-posts links, and writes UPSERT SQL to
-// scripts/generate-cuisine-guides.sql. Apply with:
-//   wrangler d1 execute lucaseats-db --local --file=scripts/generate-cuisine-guides.sql
-//   wrangler d1 execute lucaseats-db --remote --file=scripts/generate-cuisine-guides.sql
+//   node scripts/generate-suburb-guides.mjs                       # all eligible suburbs, draft
+//   node scripts/generate-suburb-guides.mjs --suburb=surry-hills  # one suburb (slug)
+//   node scripts/generate-suburb-guides.mjs --publish             # mark posts published immediately
+//   node scripts/generate-suburb-guides.mjs --dry-run             # log prompts, don't call API
+//   node scripts/generate-suburb-guides.mjs --min=3               # min restaurants per suburb (default 3)
+//   node scripts/generate-suburb-guides.mjs --limit=5             # max suburbs per run
+//   node scripts/generate-suburb-guides.mjs --skip-voice-check    # bypass Haiku voice check
 
 import { writeFileSync } from 'node:fs';
 import { MODEL_OPUS, makeClient } from './lib/anthropic.mjs';
@@ -25,12 +18,12 @@ import { buildPostUpsert } from './lib/post-upsert.mjs';
 import { buildRelatedSql } from './lib/related-posts.mjs';
 import { runVoiceCheck, formatVoiceIssues } from './lib/voice-check.mjs';
 
-const OUTPUT_SQL = 'scripts/generate-cuisine-guides.sql';
+const OUTPUT_SQL = 'scripts/generate-suburb-guides.sql';
 const DEFAULT_MIN_RESTAURANTS = 3;
 
 const SYSTEM_PROMPT = `You are writing for Lucas Eats Big (lucaseatsbig.com), Lucas Leung's personal Sydney food review site. Voice: opinionated, warm, observational, first-person ("I"), no marketing fluff.
 
-You write evergreen ranked guides for SEO. Each guide covers one cuisine in Sydney. Your audience: people Googling "best [cuisine] sydney".
+You write evergreen ranked guides for SEO. Each guide covers one Sydney suburb. Your audience: people Googling "best restaurants {suburb}", "where to eat {suburb}", "{suburb} food".
 
 # Hard rules — non-negotiable
 
@@ -40,33 +33,34 @@ You write evergreen ranked guides for SEO. Each guide covers one cuisine in Sydn
 4. **Internal-link every restaurant** the first time you mention it: \`[Name](/restaurants/{slug})\`. Use the slug exactly as provided.
 5. **Word count: 1200–1800.** SEO-substantive, not bloated.
 6. **Structure:**
-   - Short opening paragraph (~80 words) — Lucas's take on the cuisine in Sydney overall.
-   - One \`## Heading\` per restaurant with the format \`## N. Restaurant Name — suburb\`.
+   - Short opening paragraph (~80 words) — Lucas's take on this suburb's food scene overall, what kind of eating it's good for, who it suits.
+   - One \`## Heading\` per restaurant with the format \`## N. Restaurant Name — cuisine\`.
    - 2–3 paragraphs per restaurant covering: what it is, what to order (use the standout dishes), Lucas's verdict (incorporate his real commentary verbatim or paraphrased honestly).
    - If \`paa_questions\` is provided, include a final \`## Frequently asked\` section with 3–5 of the questions answered concisely (≤80 words each), grounded in the data.
-   - Brief closing paragraph naming who each spot suits ("for date night", "for a casual lunch", etc.) — only based on the data.
+   - Brief closing paragraph naming who each spot suits ("for date night", "for a casual lunch", "for groups", etc.) — only based on the data.
 7. **Tone:** confident, specific, never generic. Avoid "hidden gem", "must-try", "foodie", "in the heart of", "amazing", "delicious", "mouth-watering", "go-to spot", "culinary", "gastronomic", "palate". Replace with sensory specifics from the data.
 8. **No fabricated quotes from Lucas.** If you paraphrase his commentary, stay faithful to what he wrote.
+9. **Lean into the suburb angle.** Mention the suburb by name in the opening, in 2–3 H2s where natural, and in the closing. Reference the cuisine mix you see across the data ("a heavy Italian lean", "leaning Thai and Japanese") rather than inventing one.
 
 # Output format
 
 Return JSON matching this schema exactly. No prose outside the JSON.
 
 {
-  "title": string,         // SEO title, ≤60 chars. Format: "Best <Cuisine> in Sydney — Ranked"
-  "slug": string,          // URL slug, kebab-case. Format: "best-<cuisine>-sydney"
-  "description": string,   // SEO meta description, ≤160 chars, hooks the reader
+  "title": string,         // SEO title, ≤60 chars. Format: "Best Restaurants in <Suburb>, Sydney"
+  "slug": string,          // URL slug, kebab-case. Format: "best-restaurants-<suburb>-sydney"
+  "description": string,   // SEO meta description, ≤160 chars, hooks the reader, mentions the suburb
   "body_md": string,       // The full markdown article per the structure above
-  "og_image_restaurant_id": number,  // Choose the top-ranked restaurant's id from the source data
-  "featured_restaurant_ids": number[],  // Every restaurant id mentioned, in the order they appear
-  "faq": [{ "question": string, "answer": string }]  // Optional; mirror the FAQ section in body_md if present, else []
+  "og_image_restaurant_id": number,
+  "featured_restaurant_ids": number[],
+  "faq": [{ "question": string, "answer": string }]
 }`;
 
 // --- CLI ------------------------------------------------------------------
 
 const args = process.argv.slice(2);
 const flags = {
-  cuisine: null,
+  suburb: null,
   publish: false,
   dryRun: false,
   minRestaurants: DEFAULT_MIN_RESTAURANTS,
@@ -79,7 +73,7 @@ for (const a of args) {
   if (a === '--publish') flags.publish = true;
   else if (a === '--dry-run') flags.dryRun = true;
   else if (a === '--skip-voice-check') flags.skipVoiceCheck = true;
-  else if (a.startsWith('--cuisine=')) flags.cuisine = a.slice('--cuisine='.length);
+  else if (a.startsWith('--suburb=')) flags.suburb = a.slice('--suburb='.length);
   else if (a.startsWith('--min=')) flags.minRestaurants = Number(a.slice('--min='.length));
   else if (a.startsWith('--limit=')) flags.limit = Number(a.slice('--limit='.length));
   else if (a.startsWith('--topic-id=')) flags.topicId = Number(a.slice('--topic-id='.length));
@@ -96,37 +90,38 @@ if (!anthropic && !flags.dryRun) {
   process.exit(1);
 }
 
-// --- Source-set query -----------------------------------------------------
+// --- Source data ----------------------------------------------------------
 
-console.log('Fetching cuisine candidates from remote...');
+console.log('Fetching suburb candidates from remote...');
 
-const cuisineRows = queryRemote(`
-  SELECT res.cuisine, COUNT(DISTINCT res.id) AS n
-    FROM restaurants res
+const suburbRows = queryRemote(`
+  SELECT loc.slug, loc.name, COUNT(DISTINCT res.id) AS n
+    FROM locations loc
+    JOIN restaurants res ON res.location_id = loc.id
     JOIN reviews rv ON rv.restaurant_id = res.id AND rv.status = 'published'
-   WHERE res.cuisine IS NOT NULL AND res.cuisine <> ''
-   GROUP BY res.cuisine
+   GROUP BY loc.id
   HAVING n >= ${flags.minRestaurants}
    ORDER BY n DESC
 `);
 
-let cuisinesToProcess = flags.cuisine
-  ? cuisineRows.filter((c) => c.cuisine.toLowerCase() === flags.cuisine.toLowerCase())
-  : cuisineRows;
+let suburbsToProcess = flags.suburb
+  ? suburbRows.filter((s) => s.slug.toLowerCase() === flags.suburb.toLowerCase())
+  : suburbRows;
 
-if (flags.cuisine && cuisinesToProcess.length === 0) {
-  console.error(`No cuisine "${flags.cuisine}" with ≥${flags.minRestaurants} entries on remote.`);
+if (flags.suburb && suburbsToProcess.length === 0) {
+  console.error(`No suburb "${flags.suburb}" with ≥${flags.minRestaurants} entries on remote.`);
+  console.error(`Tip: pass the suburb slug, not the display name (e.g. "surry-hills" not "Surry Hills").`);
   process.exit(1);
 }
 
-if (flags.limit) cuisinesToProcess = cuisinesToProcess.slice(0, flags.limit);
+if (flags.limit) suburbsToProcess = suburbsToProcess.slice(0, flags.limit);
 
-console.log(`\nWill generate guides for ${cuisinesToProcess.length} cuisine(s):`);
-for (const c of cuisinesToProcess) console.log(`  - ${c.cuisine} (${c.n} restaurants)`);
+console.log(`\nWill generate guides for ${suburbsToProcess.length} suburb(s):`);
+for (const s of suburbsToProcess) console.log(`  - ${s.name} (${s.n} restaurants)`);
 console.log();
 
-function fetchCuisineSourceSet(cuisine) {
-  const escaped = cuisine.replace(/'/g, "''");
+function fetchSuburbSourceSet(suburbSlug) {
+  const escaped = suburbSlug.replace(/'/g, "''");
   return queryRemote(`
     WITH pub AS (
       SELECT r.restaurant_id,
@@ -159,34 +154,34 @@ function fetchCuisineSourceSet(cuisine) {
         JOIN tags t ON t.id = rt.tag_id
        GROUP BY rt.restaurant_id
     )
-    SELECT res.id, res.slug, res.name, res.address, res.price_tier,
-           loc.name AS location,
+    SELECT res.id, res.slug, res.name, res.cuisine, res.address, res.price_tier,
+           loc.name AS location, loc.slug AS location_slug,
            pub.visit_count, pub.avg_overall, pub.latest_visit_date,
            commentary.commentary_blob,
            standouts.standouts_blob,
            tagblobs.tags_blob
       FROM restaurants res
       JOIN pub ON pub.restaurant_id = res.id
-      LEFT JOIN locations  loc        ON loc.id = res.location_id
-      LEFT JOIN commentary            ON commentary.restaurant_id = res.id
-      LEFT JOIN standouts             ON standouts.restaurant_id = res.id
-      LEFT JOIN tagblobs              ON tagblobs.restaurant_id = res.id
-     WHERE LOWER(res.cuisine) = LOWER('${escaped}')
+      JOIN locations loc ON loc.id = res.location_id AND loc.slug = '${escaped}'
+      LEFT JOIN commentary ON commentary.restaurant_id = res.id
+      LEFT JOIN standouts  ON standouts.restaurant_id  = res.id
+      LEFT JOIN tagblobs   ON tagblobs.restaurant_id   = res.id
      ORDER BY pub.avg_overall DESC, pub.latest_visit_date DESC, res.name ASC
   `);
 }
 
 // --- Claude call ----------------------------------------------------------
 
-async function generateGuide(cuisine, restaurants, paaQuestions) {
+async function generateGuide(suburb, restaurants, paaQuestions) {
   const dataPayload = {
-    cuisine,
+    suburb: suburb.name,
+    suburb_slug: suburb.slug,
     paa_questions: paaQuestions ?? [],
     restaurants: restaurants.map((r) => ({
       id: r.id,
       slug: r.slug,
       name: r.name,
-      suburb: r.location,
+      cuisine: r.cuisine,
       address: r.address,
       price_tier: r.price_tier,
       avg_rating: r.avg_overall != null ? Number(r.avg_overall).toFixed(1) : null,
@@ -198,7 +193,7 @@ async function generateGuide(cuisine, restaurants, paaQuestions) {
     })),
   };
 
-  const userMessage = `Cuisine: ${cuisine}\n\nRestaurant data (already ordered by Lucas's average rating, descending):\n\n${JSON.stringify(
+  const userMessage = `Suburb: ${suburb.name}\n\nRestaurant data (already ordered by Lucas's average rating, descending):\n\n${JSON.stringify(
     dataPayload,
     null,
     2
@@ -216,9 +211,7 @@ async function generateGuide(cuisine, restaurants, paaQuestions) {
     max_tokens: 16000,
     thinking: { type: 'adaptive' },
     output_config: { effort: 'high' },
-    system: [
-      { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-    ],
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userMessage }],
   });
 
@@ -247,7 +240,7 @@ async function generateGuide(cuisine, restaurants, paaQuestions) {
     throw new Error('No valid restaurant IDs in featured_restaurant_ids');
   }
 
-  parsed.slug = slugify(parsed.slug || `best-${cuisine}-sydney`);
+  parsed.slug = slugify(parsed.slug || `best-restaurants-${suburb.slug}-sydney`);
   if (!Array.isArray(parsed.faq)) parsed.faq = [];
 
   return { parsed, usage: response.usage };
@@ -260,21 +253,20 @@ const usageRecords = [];
 const voiceUsageRecords = [];
 let succeeded = 0, failed = 0, voiceFailed = 0;
 
-for (let i = 0; i < cuisinesToProcess.length; i++) {
-  const { cuisine, n } = cuisinesToProcess[i];
-  const tag = `[${i + 1}/${cuisinesToProcess.length}]`;
-  console.log(`\n${tag} Generating "${cuisine}" guide (${n} restaurants)...`);
+for (let i = 0; i < suburbsToProcess.length; i++) {
+  const suburb = suburbsToProcess[i];
+  const tag = `[${i + 1}/${suburbsToProcess.length}]`;
+  console.log(`\n${tag} Generating "${suburb.name}" guide (${suburb.n} restaurants)...`);
 
   try {
-    const restaurants = fetchCuisineSourceSet(cuisine);
+    const restaurants = fetchSuburbSourceSet(suburb.slug);
     const paa = flags.paaJson ? JSON.parse(flags.paaJson) : [];
-    const result = await generateGuide(cuisine, restaurants, paa);
+    const result = await generateGuide(suburb, restaurants, paa);
     if (!result) continue;
 
     const { parsed, usage } = result;
     usageRecords.push(usage);
 
-    // Voice check
     let voiceResult = { severity: 'pass', issues: [], usage: null, skipped: true };
     if (!flags.skipVoiceCheck) {
       console.log(`${tag}   running voice check...`);
@@ -293,11 +285,10 @@ for (let i = 0; i < cuisinesToProcess.length; i++) {
       console.warn(formatVoiceIssues(voiceResult));
     }
 
-    // Post UPSERT
     sqlStatements.push(
       buildPostUpsert({
-        kind: 'cuisine',
-        source_filter: cuisine,
+        kind: 'suburb',
+        source_filter: suburb.slug,
         slug: parsed.slug,
         title: parsed.title,
         description: parsed.description,
@@ -309,16 +300,14 @@ for (let i = 0; i < cuisinesToProcess.length; i++) {
       })
     );
 
-    // Related posts (always — read-only against published peers)
     const relatedSql = buildRelatedSql({
       slug: parsed.slug,
-      kind: 'cuisine',
-      source_filter: cuisine,
+      kind: 'suburb',
+      source_filter: suburb.slug,
       featured_restaurant_ids: parsed.featured_restaurant_ids,
     });
     sqlStatements.push(...relatedSql);
 
-    // Topic back-pointer (optional)
     if (flags.topicId) {
       sqlStatements.push(
         `UPDATE topics SET status='generated', generated_at=unixepoch(), post_slug='${parsed.slug.replace(/'/g, "''")}' WHERE id=${flags.topicId};`
@@ -334,10 +323,8 @@ for (let i = 0; i < cuisinesToProcess.length; i++) {
   }
 }
 
-// --- Write output ---------------------------------------------------------
-
 if (sqlStatements.length > 0) {
-  const header = `-- Generated by scripts/generate-cuisine-guides.mjs.
+  const header = `-- Generated by scripts/generate-suburb-guides.mjs.
 -- Apply with:
 --   wrangler d1 execute lucaseats-db --local --file=${OUTPUT_SQL}
 --   wrangler d1 execute lucaseats-db --remote --file=${OUTPUT_SQL}
