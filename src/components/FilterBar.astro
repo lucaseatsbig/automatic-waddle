@@ -129,10 +129,15 @@ void TAG_CHIP_LIMIT;
           type="search"
           name="q"
           value={filters.q ?? ''}
-          placeholder="Search places, dishes, suburbs…"
+          placeholder="Try “date night italian surry hills”…"
           enterkeyhint="search"
           autocomplete="off"
         />
+        <button type="button" class="search-clear" data-search-clear hidden aria-label="Clear search">
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path d="M2 2 L12 12 M12 2 L2 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
       </div>
       <div class="pill-select" data-name="cuisine" data-multi>
         <button type="button" class:list={['pill', { on: selectedCuisines.length > 0 }]} data-pill-trigger>
@@ -314,6 +319,13 @@ void TAG_CHIP_LIMIT;
 </form>
 
 <script>
+  import { smartParse, type SmartParseRefData, type SmartParseResult } from '../lib/smart-parse';
+
+  // Module-scoped: remembers the last batch of filters smart-parse added
+  // so that clearing the search input can undo exactly that batch (and
+  // not, for example, a cuisine the user picked manually via the pill).
+  let lastSmartParse: SmartParseResult | null = null;
+
   // Same View Transitions caveat as MobileFilterSheet: the site uses
   // <ClientRouter />, so the DOM is swapped on navigation. Per-element
   // listeners must be re-attached on every astro:page-load. The single
@@ -353,26 +365,140 @@ void TAG_CHIP_LIMIT;
     dispatchFiltersChanged();
   }
 
+  /**
+   * Wipe every filter param from the URL — manual picks AND smart-parse
+   * additions. Preserves `view` (list/map) since that's UI state, not a
+   * filter. Triggered by the search-input × button (per the spec, that
+   * button means "fresh start").
+   */
+  function clearAllFilters() {
+    const url = new URL(window.location.href);
+    const view = url.searchParams.get('view');
+    url.search = '';
+    if (view === 'map') url.searchParams.set('view', 'map');
+    window.history.replaceState({}, '', url.toString());
+    lastSmartParse = null;
+    dispatchFiltersChanged();
+  }
+
+  /**
+   * Live smart-search. Re-parses the current input on every keystroke and
+   * diffs against the previous parse so:
+   *   - Structured filters extracted by the parser stay in URL until the
+   *     phrase that produced them is no longer present in the input.
+   *   - Filters the user picked manually via pills/checkboxes are never
+   *     touched (we only add/remove our own previously-applied values).
+   *   - `q` is set to the leftover text only — never the full input — so
+   *     a query like "date night" doesn't double-filter (vibe=date-spot
+   *     filter PLUS a text-search for "night" that matches nothing).
+   *   - Clearing the input wipes everything we contributed in one shot.
+   */
+  function runLiveSmartParse(value: string) {
+    const ref = (window as { __lucaseatsRefData?: SmartParseRefData }).__lucaseatsRefData;
+    const url = new URL(window.location.href);
+
+    if (!ref) {
+      // Reference data not yet shipped — fall back to plain text search.
+      url.searchParams.delete('q');
+      if (value) url.searchParams.set('q', value);
+      window.history.replaceState({}, '', url.toString());
+      dispatchFiltersChanged();
+      return;
+    }
+
+    const parsed = smartParse(value, ref);
+
+    // Drop anything the previous parse contributed that the current one
+    // doesn't. Skips manual user picks because they were never in
+    // lastSmartParse to begin with.
+    if (lastSmartParse) {
+      const drop = (name: string, value: string) => {
+        const all = url.searchParams.getAll(name);
+        url.searchParams.delete(name);
+        for (const v of all) if (v !== value) url.searchParams.append(name, v);
+      };
+      for (const c of lastSmartParse.cuisines) {
+        if (!parsed.cuisines.includes(c)) drop('cuisine', c);
+      }
+      for (const r of lastSmartParse.regions) {
+        if (!parsed.regions.includes(r)) drop('location', `region:${r}`);
+      }
+      for (const s of lastSmartParse.suburbs) {
+        if (!parsed.suburbs.includes(s)) drop('location', s);
+      }
+      for (const v of lastSmartParse.vibes) {
+        if (!parsed.vibes.includes(v)) drop('vibes', v);
+      }
+      for (const p of lastSmartParse.price ?? []) {
+        if (!parsed.price.includes(p)) drop('price', String(p));
+      }
+      if (lastSmartParse.meal && lastSmartParse.meal !== parsed.meal) {
+        if (url.searchParams.get('meal') === lastSmartParse.meal) {
+          url.searchParams.delete('meal');
+        }
+      }
+    }
+
+    // Add anything new from this parse (skip if the value's already there).
+    const addUnique = (name: string, value: string) => {
+      if (!url.searchParams.getAll(name).includes(value)) {
+        url.searchParams.append(name, value);
+      }
+    };
+    for (const c of parsed.cuisines) addUnique('cuisine', c);
+    for (const r of parsed.regions) addUnique('location', `region:${r}`);
+    for (const s of parsed.suburbs) addUnique('location', s);
+    for (const v of parsed.vibes) addUnique('vibes', v);
+    for (const p of parsed.price) addUnique('price', String(p));
+    if (parsed.meal) url.searchParams.set('meal', parsed.meal);
+
+    // q gets only the leftover. The full original stays visible in the
+    // search input so the user can see their query.
+    url.searchParams.delete('q');
+    if (parsed.remaining) url.searchParams.set('q', parsed.remaining);
+
+    window.history.replaceState({}, '', url.toString());
+    lastSmartParse = parsed.matched ? parsed : null;
+    dispatchFiltersChanged();
+  }
+
   function initFilterBar() {
     const form = document.querySelector<HTMLFormElement>('.filter-bar');
     if (!form) return;
 
-    // Suppress the native form submission — every filter change goes through
-    // URL replaceState + the filter-changed event. The form action attribute
-    // stays so non-JS users can still GET-submit (graceful degradation).
+    // Live smart-search — every keystroke runs the parser so structured
+    // tokens light up filter pills as the user types, and the leftover
+    // (with stopwords stripped) becomes the q text-search. Same handler
+    // for both Enter (form submit) and live typing — they're equivalent.
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const q = form.querySelector<HTMLInputElement>('input[name="q"]');
-      setSingleParam('q', q?.value.trim() ?? '');
+      runLiveSmartParse(q?.value.trim() ?? '');
+      // Drop focus so the on-screen keyboard tucks away on mobile —
+      // results are below the input, the user is done typing.
+      q?.blur();
     });
-
-    // Live search — debounce so we don't reflow the list on every keystroke.
     const qInput = form.querySelector<HTMLInputElement>('input[name="q"]');
+    const clearBtn = form.querySelector<HTMLButtonElement>('[data-search-clear]');
+    const syncClearBtn = () => {
+      if (!clearBtn || !qInput) return;
+      clearBtn.toggleAttribute('hidden', !qInput.value);
+    };
     if (qInput) {
       let t: ReturnType<typeof setTimeout> | null = null;
       qInput.addEventListener('input', () => {
+        syncClearBtn();
         if (t) clearTimeout(t);
-        t = setTimeout(() => setSingleParam('q', qInput.value.trim()), 180);
+        t = setTimeout(() => runLiveSmartParse(qInput.value.trim()), 180);
+      });
+      syncClearBtn();
+    }
+    if (clearBtn && qInput) {
+      clearBtn.addEventListener('click', () => {
+        qInput.value = '';
+        syncClearBtn();
+        clearAllFilters();
+        qInput.focus();
       });
     }
 
@@ -499,6 +625,35 @@ void TAG_CHIP_LIMIT;
   .search-input-wrap input[type="search"]:focus { border-color: var(--ink); }
   .search-input-wrap input[type="search"]::-webkit-search-cancel-button {
     -webkit-appearance: none;
+  }
+  /* Right-side × button — only rendered when the input has text. Sits
+     inside the search wrap; padding-right on the input above leaves it
+     room. */
+  .search-input-wrap input[type="search"] {
+    padding-right: 2.4rem;
+  }
+  .search-clear {
+    position: absolute;
+    right: 0.4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.1s, color 0.1s;
+  }
+  .search-clear[hidden] { display: none; }
+  .search-clear:hover {
+    background: var(--paper);
+    color: var(--ink);
   }
 
   .filter-bar {

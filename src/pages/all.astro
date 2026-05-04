@@ -458,11 +458,11 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
         cb.closest<HTMLLabelElement>('label')?.classList.toggle('on', checked);
       });
 
-      // Search input
-      const qInput = bar.querySelector<HTMLInputElement>('input[name="q"]');
-      if (qInput && document.activeElement !== qInput) {
-        qInput.value = filters.q ?? '';
-      }
+      // Search input — intentionally NOT synced from URL → DOM here.
+      // The smart-parser writes the LEFTOVER (after extraction) to `q`,
+      // but we want the user's full original typed text to stay visible
+      // in the search box. Initial paint is correct from SSR; clear-all
+      // and the × button explicitly reset the value when needed.
     }
 
     function syncMobileSheetUi(filters: Filters) {
@@ -510,11 +510,10 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
         if (check) check.textContent = minRating ? '✓' : '';
       }
 
-      // Outer search input (above the sheet, but conceptually mobile UI).
-      const qInput = document.querySelector<HTMLInputElement>('.mfs-search-row input[name="q"]');
-      if (qInput && document.activeElement !== qInput) {
-        qInput.value = filters.q ?? '';
-      }
+      // Outer search input — same rationale as syncFilterBarUi: don't
+      // overwrite the user's typed text with the URL `q` (which is
+      // smart-parse's leftover after extraction). Clear-all + × button
+      // are responsible for clearing the input when needed.
     }
 
     function buildMobileAppliedChips(filters: Filters, ref: ReferenceData, currentUrl: URL): string {

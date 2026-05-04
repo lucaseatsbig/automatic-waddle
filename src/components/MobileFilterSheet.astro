@@ -160,10 +160,15 @@ for (const slug of filters.vibes ?? []) {
         type="search"
         name="q"
         value={filters.q ?? ''}
-        placeholder="Search places, dishes, suburbs…"
+        placeholder="Try “date night italian”…"
         enterkeyhint="search"
         autocomplete="off"
       />
+      <button type="button" class="mfs-search-clear" data-mfs-search-clear hidden aria-label="Clear search">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M2 2 L12 12 M12 2 L2 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </button>
     </div>
 
     <button type="button" class:list={['mfs-trigger', { on: activeCount > 0 }]} data-mfs-open aria-haspopup="dialog">
@@ -337,6 +342,12 @@ for (const slug of filters.vibes ?? []) {
 </div>
 
 <script>
+  import { smartParse, type SmartParseRefData, type SmartParseResult } from '../lib/smart-parse';
+
+  // Module-scoped: tracks filters added by smart-parse so clearing the
+  // search input on mobile also undoes them. Same shape as FilterBar's.
+  let lastSmartParse: SmartParseResult | null = null;
+
   // The site uses Astro View Transitions, which swaps the DOM on navigation
   // instead of reloading. So per-element listeners must be re-attached on
   // every `astro:page-load`. Global listeners (Escape, scroll-lock reset)
@@ -361,6 +372,22 @@ for (const slug of filters.vibes ?? []) {
 
   function dispatchFiltersChanged() {
     window.dispatchEvent(new CustomEvent('lucaseats:filters-changed'));
+  }
+
+  /**
+   * Wipe every filter param from the URL — manual picks AND smart-parse
+   * additions. Preserves `view` (list/map) since that's UI state, not a
+   * filter. Triggered by the outer search × button (per the spec, that
+   * button means "fresh start").
+   */
+  function clearAllFiltersMobile() {
+    const url = new URL(window.location.href);
+    const view = url.searchParams.get('view');
+    url.search = '';
+    if (view === 'map') url.searchParams.set('view', 'map');
+    window.history.replaceState({}, '', url.toString());
+    lastSmartParse = null;
+    dispatchFiltersChanged();
   }
 
   function initMobileFilterSheet() {
@@ -391,13 +418,31 @@ for (const slug of filters.vibes ?? []) {
     if (searchForm && searchInput) {
       searchForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        applyOuterParam('q', searchInput.value.trim());
+        runLiveSmartParseMobile(searchInput.value.trim());
+        // Drop focus so the on-screen keyboard tucks away — results live
+        // below the search bar and the user is done typing.
+        searchInput.blur();
       });
+      const clearBtn = searchForm.querySelector<HTMLButtonElement>('[data-mfs-search-clear]');
+      const syncClearBtn = () => {
+        if (!clearBtn) return;
+        clearBtn.toggleAttribute('hidden', !searchInput.value);
+      };
       let t: ReturnType<typeof setTimeout> | null = null;
       searchInput.addEventListener('input', () => {
+        syncClearBtn();
         if (t) clearTimeout(t);
-        t = setTimeout(() => applyOuterParam('q', searchInput.value.trim()), 180);
+        t = setTimeout(() => runLiveSmartParseMobile(searchInput.value.trim()), 180);
       });
+      syncClearBtn();
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          searchInput.value = '';
+          syncClearBtn();
+          clearAllFiltersMobile();
+          searchInput.focus();
+        });
+      }
     }
 
     // Sort cycle anchor — intercept the click so we don't full-reload.
@@ -467,11 +512,69 @@ for (const slug of filters.vibes ?? []) {
     }
   }
 
-  function applyOuterParam(name: string, value: string) {
+  /**
+   * Mobile mirror of FilterBar.runLiveSmartParse — same logic, same diff
+   * semantics, same q=leftover rule. See FilterBar for full notes.
+   */
+  function runLiveSmartParseMobile(value: string) {
+    const ref = (window as { __lucaseatsRefData?: SmartParseRefData }).__lucaseatsRefData;
     const url = new URL(window.location.href);
-    url.searchParams.delete(name);
-    if (value) url.searchParams.append(name, value);
+
+    if (!ref) {
+      url.searchParams.delete('q');
+      if (value) url.searchParams.set('q', value);
+      window.history.replaceState({}, '', url.toString());
+      dispatchFiltersChanged();
+      return;
+    }
+
+    const parsed = smartParse(value, ref);
+
+    if (lastSmartParse) {
+      const drop = (name: string, value: string) => {
+        const all = url.searchParams.getAll(name);
+        url.searchParams.delete(name);
+        for (const v of all) if (v !== value) url.searchParams.append(name, v);
+      };
+      for (const c of lastSmartParse.cuisines) {
+        if (!parsed.cuisines.includes(c)) drop('cuisine', c);
+      }
+      for (const r of lastSmartParse.regions) {
+        if (!parsed.regions.includes(r)) drop('location', `region:${r}`);
+      }
+      for (const s of lastSmartParse.suburbs) {
+        if (!parsed.suburbs.includes(s)) drop('location', s);
+      }
+      for (const v of lastSmartParse.vibes) {
+        if (!parsed.vibes.includes(v)) drop('vibes', v);
+      }
+      for (const p of lastSmartParse.price ?? []) {
+        if (!parsed.price.includes(p)) drop('price', String(p));
+      }
+      if (lastSmartParse.meal && lastSmartParse.meal !== parsed.meal) {
+        if (url.searchParams.get('meal') === lastSmartParse.meal) {
+          url.searchParams.delete('meal');
+        }
+      }
+    }
+
+    const addUnique = (name: string, value: string) => {
+      if (!url.searchParams.getAll(name).includes(value)) {
+        url.searchParams.append(name, value);
+      }
+    };
+    for (const c of parsed.cuisines) addUnique('cuisine', c);
+    for (const r of parsed.regions) addUnique('location', `region:${r}`);
+    for (const s of parsed.suburbs) addUnique('location', s);
+    for (const v of parsed.vibes) addUnique('vibes', v);
+    for (const p of parsed.price) addUnique('price', String(p));
+    if (parsed.meal) url.searchParams.set('meal', parsed.meal);
+
+    url.searchParams.delete('q');
+    if (parsed.remaining) url.searchParams.set('q', parsed.remaining);
+
     window.history.replaceState({}, '', url.toString());
+    lastSmartParse = parsed.matched ? parsed : null;
     dispatchFiltersChanged();
   }
 
@@ -571,13 +674,16 @@ for (const slug of filters.vibes ?? []) {
     .mfs-search-input-wrap input[type="search"] {
       width: 100%;
       height: 38px;
-      padding: 0 0.85rem 0 2.05rem;
+      padding: 0 2.4rem 0 2.05rem;
       border: 1px solid var(--rule);
       border-radius: 999px;
       background: var(--bg);
       color: var(--ink);
       font-family: var(--sans);
-      font-size: 0.875rem;
+      /* 16px (1rem) minimum on mobile — iOS Safari auto-zooms inputs
+         under that size when focused, which causes a jarring zoom-in /
+         zoom-out cycle. */
+      font-size: 1rem;
       outline: none;
       -webkit-appearance: none;
       appearance: none;
@@ -589,6 +695,29 @@ for (const slug of filters.vibes ?? []) {
     /* Strip the native clear button on WebKit so it doesn't fight our styling */
     .mfs-search-input-wrap input[type="search"]::-webkit-search-cancel-button {
       -webkit-appearance: none;
+    }
+    /* Right-side × button — visible only when the input has a value. */
+    .mfs-search-clear {
+      position: absolute;
+      right: 0.35rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .mfs-search-clear[hidden] { display: none; }
+    .mfs-search-clear:hover {
+      background: var(--paper);
+      color: var(--ink);
     }
 
     /* Row 2: sort label/cycle + count */
