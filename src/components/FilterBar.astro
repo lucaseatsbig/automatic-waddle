@@ -109,6 +109,21 @@ if (locationCount >= 2) {
     activeChips.push({ key: `su-${slug}`, label: lname, removeName: 'location', removeValue: slug });
   }
 }
+// "Has any filter at all" — drives whether to show the Applied row's
+// Clear all link. Broader than activeChips.length because Clear all
+// should be visible even when only a single-pick filter (1 cuisine,
+// just top-rated, just a vibe) is active.
+const anyFilterActive = !!(
+  selectedCuisines.length ||
+  selectedRegionSlugs.length ||
+  selectedSuburbSlugs.length ||
+  topRated ||
+  visitedKey ||
+  (filters.vibes && filters.vibes.length) ||
+  (filters.price && filters.price.length) ||
+  (filters.q && filters.q.trim()) ||
+  (filters.sort && filters.sort !== 'name')
+);
 const hasFilters = activeChips.length > 0;
 void TAG_CHIP_LIMIT;
 ---
@@ -291,10 +306,12 @@ void TAG_CHIP_LIMIT;
       </div>
     )}
 
-    {/* Active filters strip — shows specific selections (the pills
-        themselves only fit a count when multi-selected). Always rendered
-        so the client filter engine has a stable target to repopulate. */}
-    <div class="active-row" style={hasFilters ? '' : 'display: none'}>
+    {/* Active filters strip. Always rendered (display: none when no
+        filters anywhere) so the client filter engine has a stable target.
+        Chips only appear when 2+ multi-select values exist for cuisine/
+        location; "Clear all" appears whenever ANY filter is active so
+        the user always has a reset path. */}
+    <div class="active-row" style={anyFilterActive ? '' : 'display: none'}>
       {hasFilters && <span class="row-label applied">Applied</span>}
       {activeChips.map((chip) => (
         <button
@@ -307,8 +324,8 @@ void TAG_CHIP_LIMIT;
           <span class="x" aria-hidden="true">×</span>
         </button>
       ))}
-      {hasFilters && (
-        <a href={view === 'map' ? '/all?view=map' : '/all'} class="clear-all" data-clear-all>Clear all</a>
+      {anyFilterActive && (
+        <a href={view === 'map' ? '/all?view=map' : '/all'} class="clear-all" data-clear-all>Clear all filters</a>
       )}
     </div>
   </div>

@@ -293,6 +293,77 @@ function buildPhraseIndex(ref: SmartParseRefData): Phrase[] {
 }
 
 /**
+ * Levenshtein edit distance with an early-exit. Returns `max + 1` once
+ * we know the distance can't fall within the budget, so callers can
+ * treat that as "too far" without paying for the full DP table.
+ */
+function editDistance(a: string, b: string, max: number): number {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  // Keep `a` shorter so the working column is small.
+  if (a.length > b.length) { const tmp = a; a = b; b = tmp; }
+  const aLen = a.length;
+  const bLen = b.length;
+  let prev = new Array(aLen + 1);
+  let curr = new Array(aLen + 1);
+  for (let j = 0; j <= aLen; j++) prev[j] = j;
+  for (let i = 1; i <= bLen; i++) {
+    curr[0] = i;
+    let rowMin = i;
+    for (let j = 1; j <= aLen; j++) {
+      const cost = a.charCodeAt(j - 1) === b.charCodeAt(i - 1) ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j] + 1,           // delete
+        curr[j - 1] + 1,       // insert
+        prev[j - 1] + cost,    // replace
+      );
+      if (curr[j] < rowMin) rowMin = curr[j];
+    }
+    if (rowMin > max) return max + 1;
+    const tmp = prev; prev = curr; curr = tmp;
+  }
+  return prev[aLen];
+}
+
+/**
+ * Length-aware tolerance for fuzzy matching: short typos rarely tip into
+ * adjacent words, but long ones can absorb a couple of edits without
+ * losing meaning. <4 chars: no fuzzy at all (too easy to misfire).
+ */
+function fuzzyTolerance(len: number): number {
+  if (len < 4) return 0;
+  if (len < 7) return 1;
+  return 2;
+}
+
+/**
+ * Build the candidate set for fuzzy matching: every single-word phrase
+ * plus every word from the multi-word location/cuisine index. Keyed by
+ * the candidate string so we can deduplicate. Each value is the list of
+ * Phrase entries that token would imply.
+ */
+function buildFuzzyIndex(
+  phrases: Phrase[],
+  wordIndex: Map<string, Phrase[]>
+): Map<string, Phrase[]> {
+  const idx = new Map<string, Phrase[]>();
+  const add = (key: string, p: Phrase) => {
+    if (!key || key.length < 3) return;
+    const list = idx.get(key) ?? [];
+    if (!list.some((e) => e.type === p.type && e.value === p.value)) list.push(p);
+    idx.set(key, list);
+  };
+  for (const p of phrases) {
+    if (p.phrase.includes(' ')) continue;
+    add(p.phrase, p);
+  }
+  for (const [word, hits] of wordIndex.entries()) {
+    for (const h of hits) add(word, h);
+  }
+  return idx;
+}
+
+/**
  * Builds a single-word lookup keyed by individual words from multi-word
  * location and cuisine phrases. Lets "surry" match "Surry Hills", "cbd"
  * match "Sydney CBD", "modern" match "Modern Australian", "asian" match
@@ -339,6 +410,7 @@ function buildWordIndex(ref: SmartParseRefData): Map<string, Phrase[]> {
 export function smartParse(query: string, ref: SmartParseRefData): SmartParseResult {
   const phrases = buildPhraseIndex(ref);
   const wordIndex = buildWordIndex(ref);
+  const fuzzyIndex = buildFuzzyIndex(phrases, wordIndex);
 
   let working = ' ' + normalize(query) + ' ';
   const matched = {
@@ -382,29 +454,53 @@ export function smartParse(query: string, ref: SmartParseRefData): SmartParseRes
   // Hills), "modern" (→ Modern Australian), "asian" (→ Asian Fusion)
   // still light up filters without needing the full phrase.
   //
-  // Ambiguity guard: a word that maps to multiple distinct (type, value)
-  // pairs (e.g. "eastern" → both "Middle Eastern" cuisine and "Eastern
+  // Ambiguity guard: a word that maps to multiple distinct underlying
+  // values (e.g. "eastern" → "Middle Eastern" cuisine AND "Eastern
   // Suburbs" region) is skipped — applying both would intersect into
-  // empty results. The leftover token falls through to q text-search.
+  // empty results. The leftover token falls through to fuzzy / q.
   const surviving = working.split(/\s+/).map((t) => t.trim()).filter((t) => t.length > 0);
   const consumedTokens = new Set<string>();
   for (const tok of surviving) {
     if (STOPWORDS.has(tok)) continue;
     const hits = wordIndex.get(tok);
     if (!hits || hits.length === 0) continue;
-    // Distinct values across the hits (collapse same-value-different-type
-    // dupes — e.g. a region and suburb that share a slug).
-    const distinctValues = new Set(hits.map((h) => `${h.type}:${h.value}`));
-    const distinctSlugValues = new Set(hits.map((h) => h.value));
-    // If the hits collapse to a single underlying value (regardless of
-    // type), apply them all — same conceptual filter expressed via
-    // multiple URL params is fine (filter logic ANDs across types).
-    // Otherwise it's a genuine ambiguity (e.g. "eastern") — skip.
-    if (distinctSlugValues.size > 1) continue;
+    const distinctValues = new Set(hits.map((h) => h.value));
+    if (distinctValues.size > 1) continue;
     for (const p of hits) addMatch(p);
     consumedTokens.add(tok);
-    // distinctValues kept above for future debugging — silence unused.
-    void distinctValues;
+  }
+
+  // Pass 3 — fuzzy match for typos. Only runs on tokens 4+ chars that
+  // didn't already get consumed by exact matching. Tolerance is
+  // length-aware (1 edit for short tokens, 2 for longer) so common
+  // typos like "upscalep" → upscale, "italan" → italian get caught,
+  // but a wildly different word doesn't accidentally match.
+  for (const tok of surviving) {
+    if (consumedTokens.has(tok)) continue;
+    if (STOPWORDS.has(tok)) continue;
+    const max = fuzzyTolerance(tok.length);
+    if (max === 0) continue;
+    let bestDist = max + 1;
+    let bestHits: Phrase[] = [];
+    for (const [key, hits] of fuzzyIndex) {
+      if (Math.abs(key.length - tok.length) > max) continue;
+      const d = editDistance(tok, key, max);
+      if (d < bestDist) {
+        bestDist = d;
+        bestHits = [...hits];
+      } else if (d === bestDist) {
+        for (const h of hits) {
+          if (!bestHits.some((e) => e.type === h.type && e.value === h.value)) bestHits.push(h);
+        }
+      }
+    }
+    if (bestDist > max || bestHits.length === 0) continue;
+    // Same ambiguity guard as pass 2: skip if the closest match resolves
+    // to multiple distinct underlying values.
+    const distinctValues = new Set(bestHits.map((h) => h.value));
+    if (distinctValues.size > 1) continue;
+    for (const p of bestHits) addMatch(p);
+    consumedTokens.add(tok);
   }
 
   // What's left after both passes — stopwords stripped — becomes q.

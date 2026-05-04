@@ -214,10 +214,11 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
     }
 
     function buildAppliedChips(filters: Filters, ref: ReferenceData): string {
-      // Desktop Applied strip only surfaces multi-select state for cuisine
-      // and location. Other filters (vibes, price, visited, top-rated)
-      // already show their own state via their dedicated controls.
-      const parts: string[] = [];
+      // Desktop Applied strip surfaces multi-select state for cuisine
+      // and location (chips). It also always shows "Clear all filters"
+      // when ANY filter is active — so the user has a reset link even
+      // when only single-pick filters are set.
+      const chipParts: string[] = [];
       const escape = (s: string) => s.replace(/[&<>"']/g, (c) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)
       );
@@ -230,24 +231,39 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
       const locTotal = regions.length + locs.length;
 
       if (cuisines.length >= 2) {
-        for (const c of cuisines) parts.push(chip('cuisine', c, c));
+        for (const c of cuisines) chipParts.push(chip('cuisine', c, c));
       }
       if (locTotal >= 2) {
         for (const slug of regions) {
           const r = ref.regions.find((x) => x.slug === slug);
-          parts.push(chip('location', `region:${slug}`, r?.name ?? slug));
+          chipParts.push(chip('location', `region:${slug}`, r?.name ?? slug));
         }
         for (const slug of locs) {
           const l = ref.locations.find((x) => x.slug === slug);
-          parts.push(chip('location', slug, l?.name ?? slug));
+          chipParts.push(chip('location', slug, l?.name ?? slug));
         }
       }
 
-      if (parts.length === 0) return '';
+      const anyFilterActive = !!(
+        cuisines.length ||
+        regions.length ||
+        locs.length ||
+        (filters.vibes && filters.vibes.length) ||
+        (filters.price && filters.price.length) ||
+        (filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD) ||
+        filters.visited ||
+        (filters.q && filters.q.trim()) ||
+        (filters.sort && filters.sort !== 'name')
+      );
+      if (!anyFilterActive) return '';
+
       const view = new URLSearchParams(window.location.search).get('view');
       const clearHref = view === 'map' ? '/all?view=map' : '/all';
-      parts.push(`<a href="${clearHref}" class="clear-all" data-clear-all>Clear all</a>`);
-      return `<span class="row-label applied">Applied</span>${parts.join('')}`;
+      const out: string[] = [];
+      if (chipParts.length > 0) out.push(`<span class="row-label applied">Applied</span>`);
+      out.push(...chipParts);
+      out.push(`<a href="${clearHref}" class="clear-all" data-clear-all>Clear all filters</a>`);
+      return out.join('');
     }
 
     function applyFilters() {
@@ -499,6 +515,17 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
       setRadio('sort', sortValue);
       setRadio('visited', filters.visited ?? '');
 
+      // Outer sort-cycle anchor — update its visible label so tapping it
+      // shows the new sort immediately. Also marks the wrapper "on" when
+      // sort isn't the default A→Z.
+      const sortCycleLabels: Record<string, string> = {
+        rating: 'Best first', recent: 'Recently visited', name: 'A to Z',
+      };
+      const cycleLabelEl = document.querySelector<HTMLElement>('.mfs-sort-cycle span');
+      if (cycleLabelEl) {
+        cycleLabelEl.textContent = sortCycleLabels[filters.sort ?? 'name'];
+      }
+
       const minRating = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
       const topInput = sheet.querySelector<HTMLInputElement>('[data-mfs-toprated-input]');
       if (topInput) topInput.value = minRating ? String(TOP_RATED_THRESHOLD) : '';
@@ -576,13 +603,21 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
       const target = e.target as HTMLElement;
       if (!target) return;
 
-      // Clear-all link → strip every filter param except `view`.
+      // Clear-all link → strip every filter param except `view`. Also
+      // clears any text in the search inputs so the next keystroke
+      // doesn't smart-parse stale text and re-apply filters the user
+      // just removed.
       const clearAll = target.closest<HTMLAnchorElement>('[data-clear-all]');
       if (clearAll) {
         e.preventDefault();
         const view = new URLSearchParams(window.location.search).get('view');
         const next = view === 'map' ? '/all?view=map' : '/all';
         window.history.replaceState({}, '', next);
+        document
+          .querySelectorAll<HTMLInputElement>(
+            '.filter-bar input[name="q"], .mfs-search-row input[name="q"]'
+          )
+          .forEach((el) => { el.value = ''; });
         applyFilters();
         return;
       }

@@ -335,10 +335,17 @@ const initialVisibleJson = JSON.stringify([...initialIdSet]).replace(/</g, '\\u0
       map.setCenter({ lat: saved.lat, lng: saved.lng });
       map.setZoom(saved.zoom);
     } else if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, 32);
-      // Cap initial zoom so a tight bounds (e.g. one suburb) doesn't slam to street level.
+      // Tighter padding than before so the visible restaurants fill more
+      // of the viewport. Clamp zoom into a sensible range after the
+      // initial fitBounds settles:
+      //   max 15 — single-point bounds shouldn't slam to street level
+      //   min 13 — for huge spreads (unfiltered, all of Sydney) keep us
+      //            close enough to read pins; outliers can be panned to
+      map.fitBounds(bounds, 16);
       maps.event.addListenerOnce(map, 'idle', () => {
-        if (map.getZoom() > 15) map.setZoom(15);
+        const z = map.getZoom();
+        if (z > 15) map.setZoom(15);
+        else if (z < 13) map.setZoom(13);
       });
     }
 

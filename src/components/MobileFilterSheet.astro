@@ -370,6 +370,29 @@ for (const slug of filters.vibes ?? []) {
     }
   });
 
+  // Sort cycle delegation — captures the click on the .mfs-sort-cycle
+  // anchor regardless of when the element appears in the DOM. The
+  // anchor's href is computed at SSR time and gets stale after any
+  // client-side filter changes, so we ignore it and just toggle the
+  // `sort` URL param ourselves.
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const cycle = target.closest<HTMLAnchorElement>('.mfs-sort-cycle');
+    if (!cycle) return;
+    e.preventDefault();
+    const order = ['name', 'rating', 'recent'] as const;
+    const current = new URL(window.location.href);
+    const currentSort = current.searchParams.get('sort');
+    const idx = currentSort ? order.indexOf(currentSort as typeof order[number]) : 0;
+    const safeIdx = idx === -1 ? 0 : idx;
+    const next = order[(safeIdx + 1) % order.length];
+    if (next === 'name') current.searchParams.delete('sort');
+    else current.searchParams.set('sort', next);
+    window.history.replaceState({}, '', current.toString());
+    window.dispatchEvent(new CustomEvent('lucaseats:filters-changed'));
+  });
+
   function dispatchFiltersChanged() {
     window.dispatchEvent(new CustomEvent('lucaseats:filters-changed'));
   }
@@ -445,21 +468,10 @@ for (const slug of filters.vibes ?? []) {
       }
     }
 
-    // Sort cycle anchor — intercept the click so we don't full-reload.
-    const sortCycle = document.querySelector<HTMLAnchorElement>('.mfs-sort-cycle');
-    if (sortCycle) {
-      sortCycle.addEventListener('click', (e) => {
-        const href = sortCycle.getAttribute('href');
-        if (!href) return;
-        e.preventDefault();
-        const dest = new URL(href, window.location.origin);
-        // Carry the current view across — the anchor's href is built by
-        // urlWithSort() which already preserves Astro.url params, but we
-        // re-replaceState here to keep the soft-update flow consistent.
-        window.history.replaceState({}, '', dest.toString());
-        dispatchFiltersChanged();
-      });
-    }
+    // Sort cycle handler is now registered globally below — see the
+    // document-level click listener at the bottom of this script. Doing
+    // it via delegation means we can't be foiled by init ordering or by
+    // a stale element reference after a soft-nav DOM swap.
 
     // --- Inner sheet form (batch-apply on Show Results) ---------------
     // Inside the sheet, individual control changes only update the visual
