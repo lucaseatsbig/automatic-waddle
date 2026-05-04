@@ -70,18 +70,41 @@ export async function getTags(db: D1Database): Promise<Tag[]> {
 export async function getCuisines(db: D1Database): Promise<string[]> {
   return memoizeReference('cuisines', async () => {
     // Sourced from the restaurant_cuisines join table so a place tagged
-    // "American, Japanese" contributes BOTH cuisines to the dropdown,
-    // rather than the literal combined string. Case-insensitive dedupe
-    // keeps "american" / "American" from fragmenting the list.
-    const { results } = await db
-      .prepare(
-        `SELECT cuisine, MIN(rowid) AS first_row
-           FROM restaurant_cuisines
-          GROUP BY LOWER(cuisine)
-          ORDER BY LOWER(cuisine)`
-      )
-      .all<{ cuisine: string; first_row: number }>();
-    return results.map((r) => r.cuisine);
+    // "American, Japanese" contributes BOTH cuisines to the dropdown.
+    // Falls back to restaurants.cuisine for any rows that haven't been
+    // backfilled into the join table yet — keeps the filter populated
+    // even if migration 0010's backfill hasn't run on this DB.
+    const [{ results: joined }, { results: legacy }] = await Promise.all([
+      db
+        .prepare(
+          `SELECT cuisine FROM restaurant_cuisines GROUP BY LOWER(cuisine) ORDER BY LOWER(cuisine)`
+        )
+        .all<{ cuisine: string }>(),
+      db
+        .prepare(
+          `SELECT DISTINCT cuisine FROM restaurants
+             WHERE cuisine IS NOT NULL AND cuisine <> ''`
+        )
+        .all<{ cuisine: string }>(),
+    ]);
+    const seen = new Map<string, string>();
+    for (const r of joined) {
+      const key = r.cuisine.toLowerCase();
+      if (!seen.has(key)) seen.set(key, r.cuisine);
+    }
+    // Legacy values may be comma-separated ("American, Japanese") — split
+    // them so they land as individual options just like the join table.
+    for (const r of legacy) {
+      const parts = String(r.cuisine ?? '')
+        .split(/\s*[,/]\s*|\s+&\s+|\s+and\s+/i)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const p of parts) {
+        const key = p.toLowerCase();
+        if (!seen.has(key)) seen.set(key, p);
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
   });
 }
 
@@ -301,12 +324,23 @@ export async function searchRestaurants(
   if (f.cuisines && f.cuisines.length > 0) {
     // Match against the restaurant_cuisines join table (case-insensitive)
     // so "Butter" tagged "American, Japanese" matches a filter for either.
-    where.push(`EXISTS (
-      SELECT 1 FROM restaurant_cuisines rc
-       WHERE rc.restaurant_id = res.id
-         AND LOWER(rc.cuisine) IN (${f.cuisines.map(() => 'LOWER(?)').join(',')})
+    // Fallback to LOWER(res.cuisine) IN (...) for restaurants that haven't
+    // been backfilled yet — handles single-cuisine rows; a legacy
+    // "American, Japanese" string here would only match the exact combined
+    // filter, but that's a transient state until the backfill is applied.
+    const placeholders = f.cuisines.map(() => 'LOWER(?)').join(',');
+    where.push(`(
+      EXISTS (
+        SELECT 1 FROM restaurant_cuisines rc
+         WHERE rc.restaurant_id = res.id
+           AND LOWER(rc.cuisine) IN (${placeholders})
+      )
+      OR (
+        NOT EXISTS (SELECT 1 FROM restaurant_cuisines rc2 WHERE rc2.restaurant_id = res.id)
+        AND LOWER(res.cuisine) IN (${placeholders})
+      )
     )`);
-    params.push(...f.cuisines);
+    params.push(...f.cuisines, ...f.cuisines);
   }
   // Combine selected regions (each expands to its suburbs) and explicit suburb
   // selections into a single OR'd suburb-slug list.
