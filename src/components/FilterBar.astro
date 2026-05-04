@@ -15,7 +15,10 @@ interface Props {
   view?: 'list' | 'map';
 }
 const { filters, locations, regions = REGIONS, tags, cuisines, view = 'list' } = Astro.props;
-const clearAllHref = view === 'map' ? '/all?view=map' : '/all';
+// `view` prop kept on the interface so the page can pass it down for parity
+// with MobileFilterSheet, even though desktop no longer needs to thread it
+// into form state — every change goes through URL replaceState now.
+void view;
 
 const vibes = tags.filter((t) => t.category === 'vibe');
 const isOn = (arr: string[] | undefined, v: string) => (arr ?? []).includes(v);
@@ -30,39 +33,58 @@ const sortLabels: Record<string, string> = {
 const TOP_RATED_THRESHOLD = 7;
 const topRated = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
 
+// Mirrors the canonical ranges in src/components/admin/RestaurantForm.astro
+// and UnifiedEntryForm.astro — keep these in sync with the admin entry form.
 const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
-  { tier: 1, symbol: '$', range: 'under $20pp' },
-  { tier: 2, symbol: '$$', range: '$20–40pp' },
-  { tier: 3, symbol: '$$$', range: '$40–80pp' },
-  { tier: 4, symbol: '$$$$', range: '$80–150pp' },
-  { tier: 5, symbol: '$$$$$', range: '$150+pp' },
+  { tier: 1, symbol: '$', range: '$0–20' },
+  { tier: 2, symbol: '$$', range: '$20–50' },
+  { tier: 3, symbol: '$$$', range: '$50–100' },
+  { tier: 4, symbol: '$$$$', range: '$100–200' },
+  { tier: 5, symbol: '$$$$$', range: '$200+' },
 ];
 
-// Desktop dropdowns are single-select; pick the first selected value if any.
-const selectedCuisine = filters.cuisines?.[0] ?? '';
-const selectedRegion = filters.regions?.[0] ?? '';
-const selectedSuburb = filters.locations?.[0] ?? '';
+// Cuisine and Location pills are multi-select. The pill's display label
+// shows "Any" / "Anywhere" when nothing's picked, the single value when
+// exactly one is picked, and "N selected" otherwise. Specific selections
+// always appear in the .active-row chip strip below for clarity.
+const selectedCuisines = filters.cuisines ?? [];
+const selectedRegionSlugs = filters.regions ?? [];
+const selectedSuburbSlugs = filters.locations ?? [];
+const totalLocations = selectedRegionSlugs.length + selectedSuburbSlugs.length;
 
-const locationValue = selectedRegion ? `region:${selectedRegion}` : selectedSuburb;
+const cuisineLabel = (() => {
+  if (selectedCuisines.length === 0) return 'Any';
+  if (selectedCuisines.length === 1) return selectedCuisines[0];
+  return `${selectedCuisines.length} selected`;
+})();
 const locationLabel = (() => {
-  if (selectedRegion) {
-    return REGIONS.find((r) => r.slug === selectedRegion)?.name ?? selectedRegion;
+  if (totalLocations === 0) return 'Anywhere';
+  if (totalLocations === 1) {
+    if (selectedRegionSlugs.length === 1) {
+      const slug = selectedRegionSlugs[0];
+      return REGIONS.find((r) => r.slug === slug)?.name ?? slug;
+    }
+    const slug = selectedSuburbSlugs[0];
+    return locations.find((l) => l.slug === slug)?.name ?? slug;
   }
-  if (selectedSuburb) {
-    return locations.find((l) => l.slug === selectedSuburb)?.name ?? selectedSuburb;
-  }
-  return 'Anywhere';
+  return `${totalLocations} selected`;
 })();
 
-const hasFilters = !!(
-  (filters.cuisines && filters.cuisines.length) ||
-  (filters.locations && filters.locations.length) ||
-  (filters.regions && filters.regions.length) ||
-  topRated ||
-  (filters.vibes && filters.vibes.length) ||
-  (filters.price && filters.price.length)
-);
+const visitedLabels: Record<string, string> = {
+  '': 'All',
+  yes: 'Visited',
+  no: 'On the list',
+};
+const visitedKey = filters.visited ?? '';
+const visitedLabel = visitedLabels[visitedKey] ?? 'All';
 
+const TAG_CHIP_LIMIT = 999; // no truncation
+
+// Active-row chip data — only surfaces multi-select state for cuisine and
+// location (the two pills whose label collapses to "N selected" when more
+// than one is picked). Single-pick values live inside the pill label.
+// Other filters (vibes, price, visited, top-rated) have their own visible
+// controls, so they never appear in the Applied strip.
 interface Chip {
   key: string;
   label: string;
@@ -70,26 +92,25 @@ interface Chip {
   removeValue?: string;
 }
 const activeChips: Chip[] = [];
-for (const c of filters.cuisines ?? []) {
-  activeChips.push({ key: `cu-${c}`, label: c, removeName: 'cuisine', removeValue: c });
+const cuisineCount = selectedCuisines.length;
+const locationCount = totalLocations;
+if (cuisineCount >= 2) {
+  for (const c of selectedCuisines) {
+    activeChips.push({ key: `cu-${c}`, label: c, removeName: 'cuisine', removeValue: c });
+  }
 }
-for (const slug of filters.regions ?? []) {
-  const rname = REGIONS.find((r) => r.slug === slug)?.name ?? slug;
-  activeChips.push({ key: `rg-${slug}`, label: rname, removeName: 'location', removeValue: `region:${slug}` });
+if (locationCount >= 2) {
+  for (const slug of selectedRegionSlugs) {
+    const rname = REGIONS.find((r) => r.slug === slug)?.name ?? slug;
+    activeChips.push({ key: `rg-${slug}`, label: rname, removeName: 'location', removeValue: `region:${slug}` });
+  }
+  for (const slug of selectedSuburbSlugs) {
+    const lname = locations.find((l) => l.slug === slug)?.name ?? slug;
+    activeChips.push({ key: `su-${slug}`, label: lname, removeName: 'location', removeValue: slug });
+  }
 }
-for (const slug of filters.locations ?? []) {
-  const lname = locations.find((l) => l.slug === slug)?.name ?? slug;
-  activeChips.push({ key: `su-${slug}`, label: lname, removeName: 'location', removeValue: slug });
-}
-if (topRated) activeChips.push({ key: 'tr', label: `Top rated (${TOP_RATED_THRESHOLD}+)`, removeName: 'minRating' });
-for (const slug of filters.vibes ?? []) {
-  const t = vibes.find((x) => x.slug === slug);
-  if (t) activeChips.push({ key: `v-${slug}`, label: t.label, removeName: 'vibes', removeValue: slug });
-}
-for (const tier of filters.price ?? []) {
-  const p = PRICE_TIERS.find((x) => x.tier === tier);
-  if (p) activeChips.push({ key: `p-${tier}`, label: `${p.symbol} ${p.range}`, removeName: 'price', removeValue: String(tier) });
-}
+const hasFilters = activeChips.length > 0;
+void TAG_CHIP_LIMIT;
 ---
 <form class="filter-bar" method="get" action="/all">
   {/* Preserve the active view (map/list) when submitting filters — without
@@ -113,11 +134,10 @@ for (const tier of filters.price ?? []) {
           autocomplete="off"
         />
       </div>
-      <div class="pill-select" data-name="cuisine">
-        <input type="hidden" name="cuisine" value={selectedCuisine} />
-        <button type="button" class:list={['pill', { on: !!selectedCuisine }]} data-pill-trigger>
+      <div class="pill-select" data-name="cuisine" data-multi>
+        <button type="button" class:list={['pill', { on: selectedCuisines.length > 0 }]} data-pill-trigger>
           <span class="meta">Cuisine</span>
-          <span class="label">{selectedCuisine || 'Any'}</span>
+          <span class="label" data-pill-label>{cuisineLabel}</span>
           <span class="caret" aria-hidden="true">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -125,26 +145,26 @@ for (const tier of filters.price ?? []) {
           </span>
         </button>
         <div class="panel" hidden>
-          {selectedCuisine && (
-            <button type="button" class="opt clear" data-value="">Clear</button>
-          )}
+          <button type="button" class="opt opt-clear" data-clear-this hidden={selectedCuisines.length === 0}>Clear all</button>
           {cuisines.map((c) => (
             <button
               type="button"
-              class:list={['opt', { on: selectedCuisine === c }]}
-              data-value={c}
+              class:list={['opt', 'opt-multi', { on: selectedCuisines.includes(c) }]}
+              data-multi-value={c}
+              role="checkbox"
+              aria-checked={selectedCuisines.includes(c) ? 'true' : 'false'}
             >
-              {c}
+              <span class="opt-tick" aria-hidden="true">✓</span>
+              <span>{c}</span>
             </button>
           ))}
         </div>
       </div>
 
-      <div class="pill-select" data-name="location">
-        <input type="hidden" name="location" value={locationValue} />
-        <button type="button" class:list={['pill', { on: !!locationValue }]} data-pill-trigger>
+      <div class="pill-select" data-name="location" data-multi>
+        <button type="button" class:list={['pill', { on: totalLocations > 0 }]} data-pill-trigger>
           <span class="meta">Location</span>
-          <span class="label">{locationLabel}</span>
+          <span class="label" data-pill-label>{locationLabel}</span>
           <span class="caret" aria-hidden="true">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -152,29 +172,50 @@ for (const tier of filters.price ?? []) {
           </span>
         </button>
         <div class="panel" hidden>
-          {locationValue && (
-            <button type="button" class="opt clear" data-value="">Clear</button>
-          )}
+          <button type="button" class="opt opt-clear" data-clear-this hidden={totalLocations === 0}>Clear all</button>
           <div class="opt-group-label">Regions</div>
           {regions.map((r) => (
             <button
               type="button"
-              class:list={['opt', { on: locationValue === `region:${r.slug}` }]}
-              data-value={`region:${r.slug}`}
+              class:list={['opt', 'opt-multi', { on: selectedRegionSlugs.includes(r.slug) }]}
+              data-multi-value={`region:${r.slug}`}
+              role="checkbox"
+              aria-checked={selectedRegionSlugs.includes(r.slug) ? 'true' : 'false'}
             >
-              {r.name}
+              <span class="opt-tick" aria-hidden="true">✓</span>
+              <span>{r.name}</span>
             </button>
           ))}
           <div class="opt-group-label">Suburbs</div>
           {locations.map((l) => (
             <button
               type="button"
-              class:list={['opt', { on: locationValue === l.slug }]}
-              data-value={l.slug}
+              class:list={['opt', 'opt-multi', { on: selectedSuburbSlugs.includes(l.slug) }]}
+              data-multi-value={l.slug}
+              role="checkbox"
+              aria-checked={selectedSuburbSlugs.includes(l.slug) ? 'true' : 'false'}
             >
-              {l.name}
+              <span class="opt-tick" aria-hidden="true">✓</span>
+              <span>{l.name}</span>
             </button>
           ))}
+        </div>
+      </div>
+
+      <div class="pill-select" data-name="visited">
+        <button type="button" class:list={['pill', { on: !!visitedKey }]} data-pill-trigger>
+          <span class="meta">Status</span>
+          <span class="label" data-pill-label>{visitedLabel}</span>
+          <span class="caret" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </button>
+        <div class="panel" hidden>
+          <button type="button" class:list={['opt', { on: visitedKey === '' }]} data-value="">All</button>
+          <button type="button" class:list={['opt', { on: visitedKey === 'yes' }]} data-value="yes">Visited</button>
+          <button type="button" class:list={['opt', { on: visitedKey === 'no' }]} data-value="no">On the list</button>
         </div>
       </div>
 
@@ -245,25 +286,26 @@ for (const tier of filters.price ?? []) {
       </div>
     )}
 
-    {activeChips.length > 0 && (
-      <div class="active-row">
-        <span class="row-label applied">Applied</span>
-        {activeChips.map((chip) => (
-          <button
-            type="button"
-            class="active-chip"
-            data-remove-name={chip.removeName}
-            data-remove-value={chip.removeValue ?? ''}
-          >
-            {chip.label}
-            <span class="x" aria-hidden="true">×</span>
-          </button>
-        ))}
-        {hasFilters && (
-          <a href={clearAllHref} class="clear-all">Clear all</a>
-        )}
-      </div>
-    )}
+    {/* Active filters strip — shows specific selections (the pills
+        themselves only fit a count when multi-selected). Always rendered
+        so the client filter engine has a stable target to repopulate. */}
+    <div class="active-row" style={hasFilters ? '' : 'display: none'}>
+      {hasFilters && <span class="row-label applied">Applied</span>}
+      {activeChips.map((chip) => (
+        <button
+          type="button"
+          class="active-chip"
+          data-remove-name={chip.removeName}
+          data-remove-value={chip.removeValue ?? ''}
+        >
+          {chip.label}
+          <span class="x" aria-hidden="true">×</span>
+        </button>
+      ))}
+      {hasFilters && (
+        <a href={view === 'map' ? '/all?view=map' : '/all'} class="clear-all" data-clear-all>Clear all</a>
+      )}
+    </div>
   </div>
 
   <noscript>
@@ -286,10 +328,53 @@ for (const tier of filters.price ?? []) {
     });
   });
 
+  // URL-state updaters. The /all page's filter engine listens for the
+  // 'lucaseats:filters-changed' event and re-applies from the URL — so
+  // every filter UI mutation just needs to update the URL and dispatch.
+  function dispatchFiltersChanged() {
+    window.dispatchEvent(new CustomEvent('lucaseats:filters-changed'));
+  }
+  function setSingleParam(name: string, value: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete(name);
+    if (value) url.searchParams.append(name, value);
+    window.history.replaceState({}, '', url.toString());
+    dispatchFiltersChanged();
+  }
+  function toggleMultiParam(name: string, value: string, checked: boolean) {
+    const url = new URL(window.location.href);
+    const all = url.searchParams.getAll(name);
+    url.searchParams.delete(name);
+    const next = checked
+      ? [...all.filter((v) => v !== value), value]
+      : all.filter((v) => v !== value);
+    for (const v of next) url.searchParams.append(name, v);
+    window.history.replaceState({}, '', url.toString());
+    dispatchFiltersChanged();
+  }
+
   function initFilterBar() {
     const form = document.querySelector<HTMLFormElement>('.filter-bar');
     if (!form) return;
-    const submitNow = () => form.submit();
+
+    // Suppress the native form submission — every filter change goes through
+    // URL replaceState + the filter-changed event. The form action attribute
+    // stays so non-JS users can still GET-submit (graceful degradation).
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const q = form.querySelector<HTMLInputElement>('input[name="q"]');
+      setSingleParam('q', q?.value.trim() ?? '');
+    });
+
+    // Live search — debounce so we don't reflow the list on every keystroke.
+    const qInput = form.querySelector<HTMLInputElement>('input[name="q"]');
+    if (qInput) {
+      let t: ReturnType<typeof setTimeout> | null = null;
+      qInput.addEventListener('input', () => {
+        if (t) clearTimeout(t);
+        t = setTimeout(() => setSingleParam('q', qInput.value.trim()), 180);
+      });
+    }
 
     const pillSelects = form.querySelectorAll<HTMLDivElement>('.pill-select');
     const closeAllPanels = () => {
@@ -301,20 +386,49 @@ for (const tier of filters.price ?? []) {
     pillSelects.forEach((sel) => {
       const trigger = sel.querySelector<HTMLButtonElement>('[data-pill-trigger]');
       const panel = sel.querySelector<HTMLDivElement>('.panel');
-      const hidden = sel.querySelector<HTMLInputElement>('input[type="hidden"]');
-      if (!trigger || !panel || !hidden) return;
+      if (!trigger || !panel) return;
+      const paramName = sel.dataset.name ?? '';
+      const isMulti = sel.dataset.multi !== undefined;
+
       trigger.addEventListener('click', (e) => {
         e.stopPropagation();
         const wasOpen = !panel.hidden;
         closeAllPanels();
         panel.hidden = wasOpen;
       });
+
       panel.querySelectorAll<HTMLButtonElement>('.opt').forEach((opt) => {
         opt.addEventListener('click', (e) => {
           e.stopPropagation();
-          hidden.value = opt.dataset.value ?? '';
+          // "Clear all" button on a multi-pill clears every value of the
+          // associated URL param.
+          if (opt.dataset.clearThis !== undefined) {
+            setSingleParam(paramName, '');
+            return;
+          }
+          // Multi-select option — toggle this single value, leave panel open.
+          if (opt.dataset.multiValue !== undefined) {
+            const value = opt.dataset.multiValue;
+            const willBeOn = !opt.classList.contains('on');
+            opt.classList.toggle('on', willBeOn);
+            opt.setAttribute('aria-checked', willBeOn ? 'true' : 'false');
+            toggleMultiParam(paramName, value, willBeOn);
+            return;
+          }
+          // Single-select option (sort, status) — set and close.
+          const value = opt.dataset.value ?? '';
           panel.hidden = true;
-          submitNow();
+          setSingleParam(paramName, value);
+          // Update local .on state immediately so the panel reflects the pick
+          // even before the next applyFilters tick.
+          panel.querySelectorAll<HTMLElement>('.opt').forEach((o) => {
+            if (o.dataset.value !== undefined) {
+              o.classList.toggle('on', (o.dataset.value ?? '') === value);
+            }
+          });
+          // Hint to the rest of the page (the multi-pill code path doesn't
+          // need this since the change-event already kicked it off).
+          void isMulti;
         });
       });
     });
@@ -323,30 +437,28 @@ for (const tier of filters.price ?? []) {
     const topRatedHidden = form.querySelector<HTMLInputElement>('input[name="minRating"]');
     if (topRatedBtn && topRatedHidden) {
       topRatedBtn.addEventListener('click', () => {
-        topRatedHidden.value = topRatedHidden.value ? '' : '7';
-        submitNow();
+        const wasOn = topRatedHidden.value !== '';
+        const nextVal = wasOn ? '' : '7';
+        topRatedHidden.value = nextVal;
+        topRatedBtn.classList.toggle('on', !wasOn);
+        topRatedBtn.setAttribute('aria-pressed', wasOn ? 'false' : 'true');
+        const check = topRatedBtn.querySelector<HTMLElement>('.check');
+        if (check) check.textContent = wasOn ? '' : '✓';
+        setSingleParam('minRating', nextVal);
       });
     }
 
     form.querySelectorAll<HTMLInputElement>('.vibe-chip input, .price-chip input').forEach((cb) => {
-      cb.addEventListener('change', submitNow);
-    });
-
-    form.querySelectorAll<HTMLButtonElement>('.active-chip').forEach((chip) => {
-      chip.addEventListener('click', () => {
-        const name = chip.dataset.removeName;
-        const value = chip.dataset.removeValue;
-        if (!name) return;
-        if ((name === 'vibes' || name === 'price') && value) {
-          const cb = form.querySelector<HTMLInputElement>(`input[name="${name}"][value="${value}"]`);
-          if (cb) cb.checked = false;
-        } else {
-          const input = form.querySelector<HTMLInputElement>(`input[name="${name}"]`);
-          if (input) input.value = '';
-        }
-        submitNow();
+      cb.addEventListener('change', () => {
+        toggleMultiParam(cb.name, cb.value, cb.checked);
+        const label = cb.closest<HTMLLabelElement>('label');
+        if (label) label.classList.toggle('on', cb.checked);
       });
     });
+
+    // Active-chip removal is handled by /all.astro's document-level click
+    // delegator (it covers desktop + mobile chips uniformly). No per-chip
+    // listener needed here.
   }
 
   // Fires on initial load and after every View Transitions swap.
@@ -508,11 +620,41 @@ for (const tier of filters.price ?? []) {
   }
   .opt:hover { background: var(--paper); }
   .opt.on { background: var(--paper); font-weight: 600; }
-  .opt.clear {
+  .opt.clear,
+  .opt-clear {
     color: var(--muted);
     border-bottom: 1px solid var(--rule);
     margin-bottom: 0.25rem;
   }
+  .opt-clear[hidden] { display: none; }
+  /* Multi-select option — leading tick that fills in when selected. */
+  .opt-multi {
+    display: flex !important;
+    align-items: center;
+    gap: 0.55rem;
+  }
+  .opt-multi .opt-tick {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--rule-strong);
+    border-radius: 4px;
+    background: var(--bg);
+    font-size: 11px;
+    line-height: 1;
+    color: transparent;
+    flex-shrink: 0;
+    transition: background 0.1s, border-color 0.1s, color 0.1s;
+  }
+  .opt-multi.on .opt-tick {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--bg);
+  }
+  .opt-multi.on { background: transparent; font-weight: 500; }
+  .opt-multi:hover .opt-tick { border-color: var(--ink); }
   .opt-group-label {
     padding: 0.5rem 0.875rem 0.25rem;
     font-size: 0.6875rem;
@@ -564,16 +706,17 @@ for (const tier of filters.price ?? []) {
   .vibe-chip, .price-chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.45rem;
     border: 1px solid var(--rule);
     background: var(--bg);
     color: var(--ink);
     border-radius: 999px;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.8125rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.9375rem;
     font-weight: 500;
     cursor: pointer;
     user-select: none;
+    line-height: 1.1;
     transition: border-color 0.1s, background 0.1s, color 0.1s;
   }
   .vibe-chip:hover, .price-chip:hover { border-color: var(--rule-strong); }
@@ -588,7 +731,7 @@ for (const tier of filters.price ?? []) {
   }
   .price-chip .range {
     color: var(--muted);
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 400;
   }
   .price-chip.on {
@@ -599,46 +742,82 @@ for (const tier of filters.price ?? []) {
   .price-chip.on .range { color: rgba(255, 255, 255, 0.7); }
   .vibe-chip input, .price-chip input { display: none; }
 
-  /* Active chips row */
-  .active-row {
-    padding-top: 0.75rem;
-    border-top: 1px dashed var(--rule);
+  /* Active chips row — only ever populated when 2+ cuisines OR 2+ locations
+     are selected (the multi-select pills can't fit them all in their label).
+     Tone matches the rest of the site's editorial palette: paper background,
+     soft rule, small italic-serif "Applied" label in forest.
+     Selectors use :global() because the client filter engine in /all.astro
+     rebuilds this row via innerHTML and the freshly-injected chips don't
+     get Astro's scoped class hash. Keeping the rules global ensures the
+     re-rendered chips stay rounded instead of falling back to browser
+     defaults (boxy buttons). */
+  :global(.filter-bar .active-row) {
+    margin-top: 0.5rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 0.55rem;
   }
-  .active-chip {
+  :global(.filter-bar .active-row .row-label.applied) {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 0.875rem;
+    color: var(--forest-soft, var(--muted));
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 500;
+    margin-right: 0.15rem;
+  }
+  /* Match the mobile mfs-applied-chip look: solid ink border, filled ink
+     × bubble. */
+  :global(.filter-bar .active-chip) {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
+    gap: 0.45rem;
+    height: 32px;
     border: 1px solid var(--ink);
     background: var(--bg);
     color: var(--ink);
     border-radius: 999px;
-    padding: 0.25rem 0.375rem 0.25rem 0.75rem;
+    padding: 0 0.45rem 0 0.75rem;
     font-family: var(--sans);
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 500;
+    line-height: 1;
     cursor: pointer;
+    transition: background 0.15s, color 0.15s;
   }
-  .active-chip .x {
+  :global(.filter-bar .active-chip:hover) {
+    background: var(--paper);
+  }
+  :global(.filter-bar .active-chip .x) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     background: var(--ink);
     color: var(--bg);
-    font-size: 0.625rem;
+    font-size: 0.7rem;
     line-height: 1;
+    transition: background 0.15s;
   }
-  .clear-all {
+  :global(.filter-bar .active-chip:hover .x) { background: var(--terracotta); }
+  :global(.filter-bar .clear-all) {
     color: var(--terracotta);
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-family: var(--sans);
+    font-size: 0.8125rem;
+    font-weight: 500;
     text-decoration: none;
-    border-bottom: 1px solid var(--terracotta);
-    padding: 0.25rem 0;
-    margin-left: 0.25rem;
+    padding: 0.25rem 0.1rem;
+    margin-left: 0.35rem;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s;
   }
+  :global(.filter-bar .clear-all:hover) { border-bottom-color: var(--terracotta); }
 
   .apply-fallback {
     margin-top: 0.75rem;

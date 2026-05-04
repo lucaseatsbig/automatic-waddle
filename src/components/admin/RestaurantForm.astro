@@ -45,14 +45,15 @@ const currentLocationName = r?.location_id
       <input
         type="text"
         name="cuisine"
-        value={r?.cuisine ?? ''}
-        placeholder="Start typing…"
+        value={(r?.cuisines && r.cuisines.length > 0 ? r.cuisines.join(', ') : (r?.cuisine ?? ''))}
+        placeholder="e.g. American, Japanese"
         list="cuisine-list"
         autocomplete="off"
       />
       <datalist id="cuisine-list">
         {cuisines.map((c) => <option value={c}></option>)}
       </datalist>
+      <p class="hint">Multiple cuisines? Separate with commas — the first one shows on cards.</p>
     </label>
 
     <label class="field">

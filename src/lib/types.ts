@@ -68,7 +68,11 @@ export interface RestaurantEditData {
   id: number;
   slug: string;
   name: string;
+  /** Primary cuisine (cards display this). */
   cuisine: string | null;
+  /** All cuisines from the join table — populated by getRestaurantForEdit
+   *  when a row exists in restaurant_cuisines, otherwise just [cuisine]. */
+  cuisines: string[];
   location_id: number | null;
   address: string | null;
   price_tier: number | null;
@@ -124,7 +128,11 @@ export interface RestaurantDetail {
   id: number;
   slug: string;
   name: string;
+  /** Primary cuisine, used by old call sites that expect a single string. */
   cuisine: string | null;
+  /** All cuisines from the restaurant_cuisines join table, in display order
+   *  (sort_order ASC). Index 0 matches `cuisine` for the primary. */
+  cuisines: string[];
   location: string | null;
   address: string | null;
   price_tier: number | null;

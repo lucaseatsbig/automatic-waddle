@@ -22,12 +22,14 @@ const vibes = tags.filter((t) => t.category === 'vibe');
 const TOP_RATED_THRESHOLD = 7;
 const topRated = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
 
+// Mirrors the canonical ranges in src/components/admin/RestaurantForm.astro
+// and UnifiedEntryForm.astro — keep these in sync with the admin entry form.
 const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
-  { tier: 1, symbol: '$',     range: 'under $20pp' },
-  { tier: 2, symbol: '$$',    range: '$20–40pp'    },
-  { tier: 3, symbol: '$$$',   range: '$40–80pp'    },
-  { tier: 4, symbol: '$$$$',  range: '$80–150pp'   },
-  { tier: 5, symbol: '$$$$$', range: '$150+pp'     },
+  { tier: 1, symbol: '$',     range: '$0–20'   },
+  { tier: 2, symbol: '$$',    range: '$20–50'  },
+  { tier: 3, symbol: '$$$',   range: '$50–100' },
+  { tier: 4, symbol: '$$$$',  range: '$100–200'},
+  { tier: 5, symbol: '$$$$$', range: '$200+'   },
 ];
 
 const sort = filters.sort ?? 'name';
@@ -70,6 +72,7 @@ activeCount += selectedCuisines.length;
 activeCount += selectedRegions.length;
 activeCount += selectedSuburbs.length;
 if (topRated) activeCount++;
+if (filters.visited) activeCount++;
 if (filters.price && filters.price.length) activeCount += filters.price.length;
 if (filters.vibes && filters.vibes.length) activeCount += filters.vibes.length;
 if (sort !== 'name') activeCount++;
@@ -103,6 +106,11 @@ for (const slug of selectedSuburbs) {
 }
 if (topRated) {
   activeChips.push({ key: 'tr', label: `Top rated (${TOP_RATED_THRESHOLD}+)`, href: urlWithout('minRating') });
+}
+if (filters.visited === 'yes') {
+  activeChips.push({ key: 'vs', label: 'Visited', href: urlWithout('visited') });
+} else if (filters.visited === 'no') {
+  activeChips.push({ key: 'vs', label: 'On the list', href: urlWithout('visited') });
 }
 for (const tier of filters.price ?? []) {
   const p = PRICE_TIERS.find((x) => x.tier === tier);
@@ -179,17 +187,19 @@ for (const slug of filters.vibes ?? []) {
     </span>
   </div>
 
-  {activeChips.length > 0 && (
-    <div class="mfs-applied" aria-label="Applied filters">
-      {activeChips.map((chip) => (
-        <a href={chip.href} class="mfs-applied-chip" aria-label={`Remove ${chip.label}`}>
-          <span>{chip.label}</span>
-          <span class="x" aria-hidden="true">×</span>
-        </a>
-      ))}
-      <a href={clearAllHref} class="mfs-applied-clear">Clear all</a>
-    </div>
-  )}
+  {/* Always rendered so the client-side filter engine has a stable target
+      to inject chips into. Hidden via inline style when empty. */}
+  <div class="mfs-applied" aria-label="Applied filters" style={activeChips.length > 0 ? '' : 'display: none'}>
+    {activeChips.map((chip) => (
+      <a href={chip.href} class="mfs-applied-chip" aria-label={`Remove ${chip.label}`}>
+        <span>{chip.label}</span>
+        <span class="x" aria-hidden="true">×</span>
+      </a>
+    ))}
+    {activeChips.length > 0 && (
+      <a href={clearAllHref} class="mfs-applied-clear" data-clear-all>Clear all</a>
+    )}
+  </div>
 </div>
 
 <div class="mfs-root" data-mfs-root aria-hidden="true">
@@ -233,6 +243,23 @@ for (const slug of filters.vibes ?? []) {
           <span class="check" aria-hidden="true">{topRated ? '✓' : ''}</span>
           <span>Top rated only ({TOP_RATED_THRESHOLD}+)</span>
         </button>
+      </div>
+
+      <!-- Status: All / Visited / On the list -->
+      <div class="mfs-group">
+        <div class="mfs-legend">Status</div>
+        <div class="mfs-segments">
+          {[
+            { value: '', label: 'All' },
+            { value: 'yes', label: 'Visited' },
+            { value: 'no', label: 'On the list' },
+          ].map((opt) => (
+            <label class:list={['mfs-seg', { on: (filters.visited ?? '') === opt.value }]}>
+              <input type="radio" name="visited" value={opt.value} checked={(filters.visited ?? '') === opt.value} />
+              <span>{opt.label}</span>
+            </label>
+          ))}
+        </div>
       </div>
 
       <!-- Cuisine — multi-select checkbox pills -->
@@ -332,6 +359,10 @@ for (const slug of filters.vibes ?? []) {
     }
   });
 
+  function dispatchFiltersChanged() {
+    window.dispatchEvent(new CustomEvent('lucaseats:filters-changed'));
+  }
+
   function initMobileFilterSheet() {
     const root = document.querySelector<HTMLDivElement>('[data-mfs-root]');
     const trigger = document.querySelector<HTMLButtonElement>('[data-mfs-open]');
@@ -352,7 +383,47 @@ for (const slug of filters.vibes ?? []) {
       el.addEventListener('click', closeSheet);
     });
 
-    // Top rated toggle
+    // --- Outer search row (always visible) ----------------------------
+    // Live search with a small debounce. Native form submit is suppressed
+    // so the page doesn't reload when the user hits Enter on the keyboard.
+    const searchForm = document.querySelector<HTMLFormElement>('.mfs-search-row');
+    const searchInput = searchForm?.querySelector<HTMLInputElement>('input[name="q"]');
+    if (searchForm && searchInput) {
+      searchForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        applyOuterParam('q', searchInput.value.trim());
+      });
+      let t: ReturnType<typeof setTimeout> | null = null;
+      searchInput.addEventListener('input', () => {
+        if (t) clearTimeout(t);
+        t = setTimeout(() => applyOuterParam('q', searchInput.value.trim()), 180);
+      });
+    }
+
+    // Sort cycle anchor — intercept the click so we don't full-reload.
+    const sortCycle = document.querySelector<HTMLAnchorElement>('.mfs-sort-cycle');
+    if (sortCycle) {
+      sortCycle.addEventListener('click', (e) => {
+        const href = sortCycle.getAttribute('href');
+        if (!href) return;
+        e.preventDefault();
+        const dest = new URL(href, window.location.origin);
+        // Carry the current view across — the anchor's href is built by
+        // urlWithSort() which already preserves Astro.url params, but we
+        // re-replaceState here to keep the soft-update flow consistent.
+        window.history.replaceState({}, '', dest.toString());
+        dispatchFiltersChanged();
+      });
+    }
+
+    // --- Inner sheet form (batch-apply on Show Results) ---------------
+    // Inside the sheet, individual control changes only update the visual
+    // state. The user hits "Show results" to commit — this matches the
+    // mobile UX where the sheet covers the page so live-filtering would
+    // be invisible until they close it.
+    const sheetForm = root.querySelector<HTMLFormElement>('.mfs-body');
+
+    // Top rated toggle (visual only; commit on Show Results).
     const topRatedInput = root.querySelector<HTMLInputElement>('[data-mfs-toprated-input]');
     const topRatedBtn = root.querySelector<HTMLButtonElement>('[data-mfs-toprated]');
     if (topRatedInput && topRatedBtn) {
@@ -366,8 +437,10 @@ for (const slug of filters.vibes ?? []) {
       });
     }
 
-    // Sort radios — sync .on class on labels
-    root.querySelectorAll<HTMLInputElement>('input[type="radio"][name="sort"]').forEach((rb) => {
+    // Radio segment groups (sort, status) — sync .on class on labels.
+    // Sets within the same `name` group are mutually exclusive, so on
+    // change we re-derive the .on state for every label in the sheet.
+    root.querySelectorAll<HTMLInputElement>('input[type="radio"]').forEach((rb) => {
       rb.addEventListener('change', () => {
         root.querySelectorAll<HTMLLabelElement>('.mfs-seg').forEach((seg) => {
           const inner = seg.querySelector<HTMLInputElement>('input[type="radio"]');
@@ -376,13 +449,47 @@ for (const slug of filters.vibes ?? []) {
       });
     });
 
-    // Checkboxes (cuisine, location, price, vibes) — sync .on class on labels
+    // Checkboxes (cuisine, location, price, vibes) — sync .on class on labels.
     root.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((cb) => {
       cb.addEventListener('change', () => {
         const label = cb.closest<HTMLLabelElement>('label');
         if (label) label.classList.toggle('on', cb.checked);
       });
     });
+
+    // Show Results — collect form state, replace URL, dispatch, close.
+    if (sheetForm) {
+      sheetForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        commitSheetForm(sheetForm);
+        closeSheet();
+      });
+    }
+  }
+
+  function applyOuterParam(name: string, value: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete(name);
+    if (value) url.searchParams.append(name, value);
+    window.history.replaceState({}, '', url.toString());
+    dispatchFiltersChanged();
+  }
+
+  function commitSheetForm(form: HTMLFormElement) {
+    const url = new URL(window.location.href);
+    // Preserve view + q (managed by the outer bar) and clear/repopulate
+    // every param the sheet controls.
+    const sheetManagedNames = ['cuisine', 'location', 'price', 'vibes', 'minRating', 'sort', 'visited'];
+    for (const n of sheetManagedNames) url.searchParams.delete(n);
+
+    const data = new FormData(form);
+    for (const name of sheetManagedNames) {
+      // Skip the "" radio for sort (means default) so we keep the URL clean.
+      const values = data.getAll(name).filter((v) => typeof v === 'string' && v.length > 0) as string[];
+      for (const v of values) url.searchParams.append(name, v);
+    }
+    window.history.replaceState({}, '', url.toString());
+    dispatchFiltersChanged();
   }
 
   // Fires on the initial page load and after every View Transitions swap.
@@ -603,13 +710,18 @@ for (const slug of filters.vibes ?? []) {
   }
 
   /* Applied filter chips next to the trigger */
-  .mfs-applied {
+  /* Applied chip strip — same scoping caveat as the desktop FilterBar:
+     the client filter engine in /all.astro rebuilds `.mfs-applied` via
+     innerHTML, and freshly-injected chips don't inherit Astro's scoped
+     class hash. :global() keeps the rules in effect post-rebuild so the
+     pill shape doesn't fall back to default browser button styling. */
+  :global(.mfs-applied) {
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
     align-items: center;
   }
-  .mfs-applied-chip {
+  :global(.mfs-applied-chip) {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
@@ -625,7 +737,7 @@ for (const slug of filters.vibes ?? []) {
     text-decoration: none;
     line-height: 1;
   }
-  .mfs-applied-chip .x {
+  :global(.mfs-applied-chip .x) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -637,7 +749,7 @@ for (const slug of filters.vibes ?? []) {
     font-size: 0.65rem;
     line-height: 1;
   }
-  .mfs-applied-clear {
+  :global(.mfs-applied-clear) {
     color: var(--terracotta);
     font-family: var(--sans);
     font-size: 0.75rem;

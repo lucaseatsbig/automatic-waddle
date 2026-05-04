@@ -6,9 +6,14 @@ interface Props {
   items: RestaurantCardData[];
   photosBase: string;
   apiKey: string;
+  /** Subset of item ids the map should show on first paint. When omitted,
+   * every item with coordinates is shown. The client filter engine swaps
+   * this set in/out via window.__lucaseatsMap.updateMarkers() afterwards. */
+  initialVisibleIds?: number[];
 }
 
-const { items, photosBase, apiKey } = Astro.props;
+const { items, photosBase, apiKey, initialVisibleIds } = Astro.props;
+const initialIdSet = new Set(initialVisibleIds ?? items.map((r) => r.id));
 
 const mapItems = items
   .filter((r) => typeof r.lat === 'number' && typeof r.lng === 'number')
@@ -35,6 +40,7 @@ const mapItems = items
 
 const missingCoords = items.length - mapItems.length;
 const mapDataJson = JSON.stringify(mapItems).replace(/</g, '\\u003c');
+const initialVisibleJson = JSON.stringify([...initialIdSet]).replace(/</g, '\\u003c');
 ---
 
 <div class="map-wrap">
@@ -68,6 +74,7 @@ const mapDataJson = JSON.stringify(mapItems).replace(/</g, '\\u003c');
 </div>
 
 <script id="lucaseats-map-data" type="application/json" is:inline set:html={mapDataJson}></script>
+<script id="lucaseats-map-visible" type="application/json" is:inline set:html={initialVisibleJson}></script>
 
 <script>
   type MapItem = {
@@ -86,16 +93,72 @@ const mapDataJson = JSON.stringify(mapItems).replace(/</g, '\\u003c');
   declare global {
     interface Window {
       google?: any;
-      __lucaseatsMap?: { init: () => Promise<void>; invalidate: () => void };
+      __lucaseatsMap?: {
+        init: () => Promise<void>;
+        invalidate: () => void;
+        updateMarkers: (visibleIds: number[]) => void;
+      };
       __lucaseatsGmapsCallback?: () => void;
     }
   }
 
+  // Module-scoped state. Survives across Astro ClientRouter soft navs
+  // (the script is hoisted and only runs once), so we explicitly `reset()`
+  // on every astro:page-load — otherwise `initialized=true` would prevent
+  // the map from re-rendering after a filter submit swaps the DOM.
   let initialized = false;
   let mapRef: any = null;
   let userMarker: any = null;
   let userAccuracyCircle: any = null;
   let loadingPromise: Promise<any> | null = null;
+  // marker ref keyed by restaurant id so updateMarkers() can show/hide
+  // individual pins as filters change without rebuilding everything.
+  let markersById: Map<number, any> = new Map();
+  let lastVisibleIds: Set<number> | null = null;
+
+  // Persist zoom/center per filtered URL so back-nav from /restaurants/X
+  // restores the same view the user was looking at. Filter changes get a
+  // different key and adapt to the new bounds — that's the right behaviour.
+  const STATE_KEY_PREFIX = 'lucaseats:map:';
+  function stateKey(): string {
+    return STATE_KEY_PREFIX + window.location.pathname + window.location.search;
+  }
+  function saveState(map: any) {
+    try {
+      const center = map.getCenter();
+      const payload = {
+        lat: center.lat(),
+        lng: center.lng(),
+        zoom: map.getZoom(),
+      };
+      sessionStorage.setItem(stateKey(), JSON.stringify(payload));
+    } catch {
+      // sessionStorage can throw in private browsing — silent fallthrough.
+    }
+  }
+  function loadState(): { lat: number; lng: number; zoom: number } | null {
+    try {
+      const raw = sessionStorage.getItem(stateKey());
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number' && typeof parsed.zoom === 'number') {
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function reset() {
+    initialized = false;
+    mapRef = null;
+    userMarker = null;
+    userAccuracyCircle = null;
+    markersById = new Map();
+    lastVisibleIds = null;
+    // loadingPromise stays — Google Maps API is loaded once per session.
+  }
 
   function escapeHtml(s: string): string {
     return s.replace(/[&<>"']/g, (c) =>
@@ -226,12 +289,33 @@ const mapDataJson = JSON.stringify(mapItems).replace(/</g, '\\u003c');
     // the popup HTML) can dismiss the InfoWindow without us having to
     // re-attach a listener after every setContent call.
     (window as any).__lucaseatsClosePopup = () => infoWindow.close();
+
+    // Read the initial visible-id set. If the page-level filter engine
+    // already pushed an updated set via updateMarkers() before init ran
+    // (race when applyFilters fires before init finishes loading Google
+    // Maps), prefer that — the SSR script tag may be stale.
+    let initialVisible: Set<number>;
+    if (lastVisibleIds) {
+      initialVisible = lastVisibleIds;
+    } else {
+      const visibleEl = document.getElementById('lucaseats-map-visible');
+      try {
+        const arr = JSON.parse(visibleEl?.textContent || '[]') as number[];
+        initialVisible = new Set(arr.filter((n) => typeof n === 'number'));
+      } catch {
+        initialVisible = new Set(items.map((i) => i.id));
+      }
+    }
+    lastVisibleIds = initialVisible;
+
     const bounds = new maps.LatLngBounds();
+    markersById = new Map();
 
     for (const item of items) {
+      const isVisible = initialVisible.has(item.id);
       const marker = new maps.Marker({
         position: { lat: item.lat, lng: item.lng },
-        map,
+        map: isVisible ? map : null,
         title: item.name,
         icon: markerIcon(maps, item.visited),
         optimized: true,
@@ -240,14 +324,26 @@ const mapDataJson = JSON.stringify(mapItems).replace(/</g, '\\u003c');
         infoWindow.setContent(buildPopupHtml(item));
         infoWindow.open({ map, anchor: marker });
       });
-      bounds.extend({ lat: item.lat, lng: item.lng });
+      markersById.set(item.id, marker);
+      if (isVisible) bounds.extend({ lat: item.lat, lng: item.lng });
     }
 
-    map.fitBounds(bounds, 32);
-    // Cap initial zoom so a tight bounds (e.g. one suburb) doesn't slam to street level.
-    maps.event.addListenerOnce(map, 'idle', () => {
-      if (map.getZoom() > 15) map.setZoom(15);
-    });
+    // If we have a saved state for this URL, prefer it so back-nav from a
+    // restaurant detail page lands on the same zoom/center the user had.
+    const saved = loadState();
+    if (saved) {
+      map.setCenter({ lat: saved.lat, lng: saved.lng });
+      map.setZoom(saved.zoom);
+    } else if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, 32);
+      // Cap initial zoom so a tight bounds (e.g. one suburb) doesn't slam to street level.
+      maps.event.addListenerOnce(map, 'idle', () => {
+        if (map.getZoom() > 15) map.setZoom(15);
+      });
+    }
+
+    // Save zoom/center after every settled pan/zoom so back-nav restores it.
+    maps.event.addListener(map, 'idle', () => saveState(map));
 
     // Wire the locate button.
     const locateBtn = document.getElementById('lucaseats-locate') as HTMLButtonElement | null;
@@ -313,6 +409,27 @@ const mapDataJson = JSON.stringify(mapItems).replace(/</g, '\\u003c');
     );
   }
 
+  function updateMarkers(visibleIds: number[]) {
+    if (!mapRef || markersById.size === 0) {
+      // Map not yet built — remember the latest set so init() picks it up.
+      lastVisibleIds = new Set(visibleIds);
+      return;
+    }
+    const next = new Set(visibleIds);
+    if (lastVisibleIds && next.size === lastVisibleIds.size) {
+      let same = true;
+      for (const id of next) if (!lastVisibleIds.has(id)) { same = false; break; }
+      if (same) return; // no-op
+    }
+    lastVisibleIds = next;
+    for (const [id, marker] of markersById) {
+      const wantVisible = next.has(id);
+      const onMap = marker.getMap() != null;
+      if (wantVisible && !onMap) marker.setMap(mapRef);
+      else if (!wantVisible && onMap) marker.setMap(null);
+    }
+  }
+
   window.__lucaseatsMap = {
     init,
     invalidate: () => {
@@ -324,7 +441,24 @@ const mapDataJson = JSON.stringify(mapItems).replace(/</g, '\\u003c');
         }, 0);
       }
     },
+    updateMarkers,
   };
+
+  // ClientRouter swaps the DOM on navigation but keeps this hoisted script's
+  // module state. Without resetting, `initialized=true` from the previous
+  // page would cause init() to bail and the new map host stays empty.
+  // Re-init eagerly when landing back on /all in map view (covers filter
+  // submits and back-nav from a restaurant detail page).
+  document.addEventListener('astro:page-load', () => {
+    reset();
+    const url = new URL(window.location.href);
+    if (url.pathname === '/all' && url.searchParams.get('view') === 'map') {
+      // The host element only exists when the page rendered with results.
+      if (document.getElementById('lucaseats-gmap')) {
+        init();
+      }
+    }
+  });
 </script>
 
 <style is:global>

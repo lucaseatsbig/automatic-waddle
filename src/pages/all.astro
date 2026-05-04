@@ -7,72 +7,92 @@ import MobileFilterSheet from '../components/MobileFilterSheet.astro';
 import HomeListCard from '../components/HomeListCard.astro';
 import MapView from '../components/MapView.astro';
 import PageHead from '../components/PageHead.astro';
-import { getCuisines, getLocationsInUse, getTags, searchRestaurants } from '../lib/db';
+import { getCuisines, getLocationsInUse, getTags, getRestaurantsForClientFilter } from '../lib/db';
 import { REGIONS } from '../lib/regions';
-import type { Filters, MealType, SortOption } from '../lib/types';
+import { matchesFilter, compareSort, parseFiltersFromUrl } from '../lib/filter';
+import type { Filters } from '../lib/types';
 
 const sp = Astro.url.searchParams;
 
-const validMeals: MealType[] = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks'];
-const rawMeal = sp.get('meal');
-const meal: MealType | undefined = rawMeal && (validMeals as string[]).includes(rawMeal)
-  ? (rawMeal as MealType)
-  : undefined;
-
-const rawVisited = sp.get('visited');
-const visited: 'yes' | 'no' | undefined =
-  rawVisited === 'yes' ? 'yes' : rawVisited === 'no' ? 'no' : undefined;
-
-const rawSort = sp.get('sort');
-const sort: SortOption | undefined =
-  rawSort === 'rating' || rawSort === 'name' || rawSort === 'recent' ? rawSort : undefined;
-
-// Location values can be either explicit suburb slugs or `region:<slug>`.
-// Split them so the server can distinguish suburbs from regions.
-const rawLocations = sp.getAll('location').filter(Boolean);
-const filterRegions = rawLocations
-  .filter((v) => v.startsWith('region:'))
-  .map((v) => v.slice('region:'.length));
-const filterLocations = rawLocations.filter((v) => !v.startsWith('region:'));
-const filterCuisines = sp.getAll('cuisine').filter(Boolean);
-
-const filters: Filters = {
-  q: sp.get('q')?.trim() || undefined,
-  cuisines: filterCuisines.length ? filterCuisines : undefined,
-  meal,
-  locations: filterLocations.length ? filterLocations : undefined,
-  regions: filterRegions.length ? filterRegions : undefined,
-  visited,
-  price: sp.getAll('price').map(Number).filter((n) => Number.isFinite(n) && n >= 1 && n <= 5),
-  minRating: (() => {
-    const raw = sp.get('minRating');
-    if (!raw) return undefined;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 0 && n <= 10 ? n : undefined;
-  })(),
-  vibes: sp.getAll('vibes'),
-  dietary: sp.getAll('dietary'),
-  sort,
-};
+// URL → Filters (canonical filter state lives in the URL, both server and
+// client read from it).
+const filters: Filters = parseFiltersFromUrl(sp);
 
 // View mode (list/map) is part of the URL so it survives back-navigation and
-// link sharing. Threaded into FilterBar and MobileFilterSheet so their forms
-// preserve it on submit; otherwise GET-form submission strips the param.
+// link sharing. Threaded into FilterBar/MobileFilterSheet so their controls
+// preserve it.
 const view = sp.get('view') === 'map' ? 'map' : 'list';
 const clearAllHref = view === 'map' ? '/all?view=map' : '/all';
 
-const [restaurants, locations, tags, cuisines] = await Promise.all([
-  searchRestaurants(env.DB, filters),
+const [allRestaurants, locations, tags, cuisines] = await Promise.all([
+  getRestaurantsForClientFilter(env.DB),
   getLocationsInUse(env.DB),
   getTags(env.DB),
   getCuisines(env.DB),
 ]);
+
+// Server-side first-paint: which restaurants match the URL filters? The
+// matching set drives the initial visible cards, the count, and the map's
+// initial marker subset. After that, the client takes over.
+const visibleIds = new Set(
+  allRestaurants
+    .filter((r) => matchesFilter(r, filters))
+    .sort((a, b) => compareSort(a, b, filters.sort))
+    .map((r) => r.id)
+);
+
+// For card render order, we use the sorted visible-first order; non-matching
+// cards trail and are hidden via data-hidden="true" so the client can flip
+// them without re-rendering.
+const sortedVisible = allRestaurants
+  .filter((r) => visibleIds.has(r.id))
+  .sort((a, b) => compareSort(a, b, filters.sort));
+const hidden = allRestaurants.filter((r) => !visibleIds.has(r.id));
+const orderedForRender = [...sortedVisible, ...hidden];
 
 const inUseSuburbSlugs = new Set(locations.map((l) => l.slug));
 const regions = REGIONS.filter((r) => r.suburbs.some((s) => inUseSuburbSlugs.has(s)));
 
 const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
 const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
+
+// JSON payloads for the client filter engine. Trim down to what the client
+// actually needs — keeps the wire size honest and the JSON.parse fast.
+const clientData = allRestaurants.map((r) => ({
+  id: r.id,
+  slug: r.slug,
+  name: r.name,
+  cuisine: r.cuisine,
+  cuisines: r.cuisines,
+  location: r.location,
+  location_slug: r.location_slug,
+  price_tier: r.price_tier,
+  avg_overall: r.avg_overall,
+  visited: r.visited,
+  latest_visit_date: r.latest_visit_date,
+  latest_meal_type: r.latest_meal_type,
+  cover_r2_key: r.cover_r2_key,
+  hero_photo_name: r.hero_photo_name,
+  lat: r.lat,
+  lng: r.lng,
+  meal_types: r.meal_types,
+  search_text: r.search_text,
+  tags: r.tags.map((t) => ({ slug: t.slug, label: t.label, category: t.category })),
+  wishlist_note: r.wishlist_note,
+  review_count: r.review_count,
+}));
+
+const clientReferenceData = {
+  regions: REGIONS.map((r) => ({ slug: r.slug, name: r.name, suburbs: r.suburbs })),
+  locations: locations.map((l) => ({ slug: l.slug, name: l.name })),
+  tags: tags.map((t) => ({ slug: t.slug, label: t.label, category: t.category })),
+  cuisines,
+};
+
+// Stringify-and-escape so a `</script>` in the data can't break out of
+// the inline JSON island.
+const dataJson = JSON.stringify(clientData).replace(/</g, '\\u003c');
+const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
 ---
 <BaseLayout title="All places · Lucas Eats Big">
   <Masthead active="all" />
@@ -84,48 +104,528 @@ const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
   <div class="filterbar-desktop">
     <FilterBar filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} view={view} />
   </div>
-  <MobileFilterSheet filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} count={restaurants.length} view={view} />
+  <MobileFilterSheet filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} count={visibleIds.size} view={view} />
 
-  <section class="results" data-view="list">
+  <section class="results" data-view={view} data-empty-results={visibleIds.size === 0 ? 'true' : 'false'}>
     <div class="results-head">
       <p class="count">
-        {restaurants.length} {restaurants.length === 1 ? 'place' : 'places'}
+        <strong data-count>{visibleIds.size}</strong> {visibleIds.size === 1 ? 'place' : 'places'}
       </p>
-      {restaurants.length > 0 && (
-        <div class="view-toggle" role="tablist" aria-label="View mode">
-          <button type="button" class="view-tab is-active" data-view="list" role="tab" aria-selected="true">List</button>
-          <button type="button" class="view-tab" data-view="map" role="tab" aria-selected="false">Map</button>
-        </div>
-      )}
+      <div class:list={['view-toggle', { 'is-empty': allRestaurants.length === 0 }]} role="tablist" aria-label="View mode">
+        <button type="button" class:list={['view-tab', { 'is-active': view === 'list' }]} data-view="list" role="tab" aria-selected={view === 'list' ? 'true' : 'false'}>List</button>
+        <button type="button" class:list={['view-tab', { 'is-active': view === 'map' }]} data-view="map" role="tab" aria-selected={view === 'map' ? 'true' : 'false'}>Map</button>
+      </div>
     </div>
 
     <div class="view view-list">
-      <div class="results-list">
-        {restaurants.map((r) => (
-          <HomeListCard restaurant={r} photosBase={photosBase} compact />
+      <div class="results-list" data-results-list>
+        {orderedForRender.map((r) => (
+          <div
+            class="filterable-card"
+            data-card-id={r.id}
+            data-hidden={visibleIds.has(r.id) ? 'false' : 'true'}
+          >
+            <HomeListCard restaurant={r} photosBase={photosBase} compact />
+          </div>
         ))}
       </div>
     </div>
 
-    {restaurants.length > 0 && (
-      <div class="view view-map">
-        <MapView items={restaurants} photosBase={photosBase} apiKey={googleMapsKey} />
-      </div>
-    )}
+    <div class="view view-map">
+      <MapView items={allRestaurants} initialVisibleIds={[...visibleIds]} photosBase={photosBase} apiKey={googleMapsKey} />
+    </div>
 
-    {restaurants.length === 0 && (
-      <div class="empty">
-        <h2>Nothing's hitting today.</h2>
-        <p>Try clearing a filter, or send me a place I should add to the list.</p>
-        <div class="empty-actions">
-          <a href={clearAllHref} class="btn-clear">Clear filters</a>
-          <a href="https://instagram.com/lucaseatsbig" target="_blank" rel="noopener noreferrer" class="btn-dm">DM @lucaseatsbig</a>
-        </div>
+    <div class="empty" data-empty hidden={visibleIds.size > 0}>
+      <h2>Nothing's hitting today.</h2>
+      <p>Try clearing a filter, or send me a place I should add to the list.</p>
+      <div class="empty-actions">
+        <a href={clearAllHref} class="btn-clear" data-clear-all>Clear filters</a>
+        <a href="https://instagram.com/lucaseatsbig" target="_blank" rel="noopener noreferrer" class="btn-dm">DM @lucaseatsbig</a>
       </div>
-    )}
+    </div>
   </section>
 
+  <script id="lucaseats-all-data" type="application/json" is:inline set:html={dataJson}></script>
+  <script id="lucaseats-all-ref" type="application/json" is:inline set:html={refJson}></script>
+
   <script>
+    import { matchesFilter, compareSort, parseFiltersFromUrl } from '../lib/filter';
+    import type { Filters } from '../lib/types';
+
+    type ClientRestaurant = {
+      id: number;
+      slug: string;
+      name: string;
+      cuisine: string | null;
+      cuisines: string[];
+      location: string | null;
+      location_slug: string | null;
+      price_tier: number | null;
+      avg_overall: number | null;
+      visited: boolean;
+      latest_visit_date: string | null;
+      latest_meal_type: string | null;
+      cover_r2_key: string | null;
+      hero_photo_name: string | null;
+      lat: number | null;
+      lng: number | null;
+      meal_types: string[];
+      search_text: string;
+      tags: { slug: string; label: string; category: 'vibe' | 'dietary' | 'other' }[];
+      wishlist_note: string | null;
+      review_count: number;
+    };
+    type ReferenceData = {
+      regions: { slug: string; name: string; suburbs: string[] }[];
+      locations: { slug: string; name: string }[];
+      tags: { slug: string; label: string; category: 'vibe' | 'dietary' | 'other' }[];
+      cuisines: string[];
+    };
+
+    declare global {
+      interface Window {
+        __lucaseatsApplyFilters?: () => void;
+        __lucaseatsAllData?: ClientRestaurant[];
+        __lucaseatsRefData?: ReferenceData;
+        __lucaseatsMap?: {
+          init: () => Promise<void>;
+          invalidate: () => void;
+          updateMarkers: (visibleIds: number[]) => void;
+        };
+      }
+    }
+
+    const TOP_RATED_THRESHOLD = 7;
+    const PRICE_SYMBOLS: Record<number, string> = { 1: '$', 2: '$$', 3: '$$$', 4: '$$$$', 5: '$$$$$' };
+
+    function readDataIslands(): { data: ClientRestaurant[]; ref: ReferenceData } | null {
+      try {
+        const dataEl = document.getElementById('lucaseats-all-data');
+        const refEl = document.getElementById('lucaseats-all-ref');
+        if (!dataEl || !refEl) return null;
+        const data = JSON.parse(dataEl.textContent || '[]') as ClientRestaurant[];
+        const ref = JSON.parse(refEl.textContent || '{}') as ReferenceData;
+        window.__lucaseatsAllData = data;
+        window.__lucaseatsRefData = ref;
+        return { data, ref };
+      } catch {
+        return null;
+      }
+    }
+
+    function buildAppliedChips(filters: Filters, ref: ReferenceData): string {
+      // Desktop Applied strip only surfaces multi-select state for cuisine
+      // and location. Other filters (vibes, price, visited, top-rated)
+      // already show their own state via their dedicated controls.
+      const parts: string[] = [];
+      const escape = (s: string) => s.replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)
+      );
+      const chip = (name: string, value: string, label: string) =>
+        `<button type="button" class="active-chip" data-remove-name="${escape(name)}" data-remove-value="${escape(value)}">${escape(label)}<span class="x" aria-hidden="true">×</span></button>`;
+
+      const cuisines = filters.cuisines ?? [];
+      const regions = filters.regions ?? [];
+      const locs = filters.locations ?? [];
+      const locTotal = regions.length + locs.length;
+
+      if (cuisines.length >= 2) {
+        for (const c of cuisines) parts.push(chip('cuisine', c, c));
+      }
+      if (locTotal >= 2) {
+        for (const slug of regions) {
+          const r = ref.regions.find((x) => x.slug === slug);
+          parts.push(chip('location', `region:${slug}`, r?.name ?? slug));
+        }
+        for (const slug of locs) {
+          const l = ref.locations.find((x) => x.slug === slug);
+          parts.push(chip('location', slug, l?.name ?? slug));
+        }
+      }
+
+      if (parts.length === 0) return '';
+      const view = new URLSearchParams(window.location.search).get('view');
+      const clearHref = view === 'map' ? '/all?view=map' : '/all';
+      parts.push(`<a href="${clearHref}" class="clear-all" data-clear-all>Clear all</a>`);
+      return `<span class="row-label applied">Applied</span>${parts.join('')}`;
+    }
+
+    function applyFilters() {
+      const islands = window.__lucaseatsAllData && window.__lucaseatsRefData
+        ? { data: window.__lucaseatsAllData, ref: window.__lucaseatsRefData }
+        : readDataIslands();
+      if (!islands) return;
+
+      const url = new URL(window.location.href);
+      const filters = parseFiltersFromUrl(url.searchParams);
+
+      // Compute the visible set + sort order.
+      const visible = islands.data
+        .filter((r) => matchesFilter(r, filters))
+        .sort((a, b) => compareSort(a, b, filters.sort));
+      const visibleIds = new Set(visible.map((r) => r.id));
+      const visibleCount = visible.length;
+
+      // Toggle hidden state on every filterable card.
+      const list = document.querySelector<HTMLElement>('[data-results-list]');
+      if (list) {
+        const cardsById = new Map<number, HTMLElement>();
+        list.querySelectorAll<HTMLElement>('.filterable-card').forEach((el) => {
+          const id = Number(el.dataset.cardId);
+          cardsById.set(id, el);
+          el.dataset.hidden = visibleIds.has(id) ? 'false' : 'true';
+        });
+
+        // Reorder visible cards to match the sort order. Hidden cards trail.
+        const frag = document.createDocumentFragment();
+        for (const r of visible) {
+          const el = cardsById.get(r.id);
+          if (el) frag.appendChild(el);
+        }
+        for (const [id, el] of cardsById) {
+          if (!visibleIds.has(id)) frag.appendChild(el);
+        }
+        list.appendChild(frag);
+      }
+
+      // Count.
+      const countEl = document.querySelector<HTMLElement>('[data-count]');
+      if (countEl) {
+        countEl.textContent = String(visibleCount);
+        const sibling = countEl.parentElement;
+        if (sibling) {
+          // Re-pluralise the trailing word ("place" / "places").
+          const text = visibleCount === 1 ? 'place' : 'places';
+          const trailing = sibling.lastChild;
+          if (trailing && trailing.nodeType === Node.TEXT_NODE) {
+            trailing.textContent = ` ${text}`;
+          }
+        }
+      }
+
+      // Empty state. Also flip a flag on the results section so the CSS
+      // can hide both the list AND map views — we don't want to render
+      // an empty Google Map in place of "Nothing's hitting today".
+      const empty = document.querySelector<HTMLElement>('[data-empty]');
+      const resultsSection = document.querySelector<HTMLElement>('.results');
+      if (empty) {
+        if (visibleCount === 0) empty.removeAttribute('hidden');
+        else empty.setAttribute('hidden', '');
+      }
+      if (resultsSection) {
+        resultsSection.dataset.emptyResults = visibleCount === 0 ? 'true' : 'false';
+      }
+
+      // Re-render applied-chips inside both desktop FilterBar (.active-row)
+      // and mobile sheet (.mfs-applied). Each container expects a slightly
+      // different inner layout — buildAppliedChips outputs the desktop one;
+      // for mobile we swap chips for anchors via a separate helper below.
+      const desktopActive = document.querySelector<HTMLElement>('.filter-bar .active-row');
+      if (desktopActive) {
+        const html = buildAppliedChips(filters, islands.ref);
+        if (html) {
+          desktopActive.innerHTML = html;
+          desktopActive.style.display = '';
+        } else {
+          desktopActive.style.display = 'none';
+          desktopActive.innerHTML = '';
+        }
+      }
+      const mobileApplied = document.querySelector<HTMLElement>('.mfs-applied');
+      if (mobileApplied) {
+        const html = buildMobileAppliedChips(filters, islands.ref, url);
+        if (html) {
+          mobileApplied.innerHTML = html;
+          mobileApplied.style.display = '';
+        } else {
+          mobileApplied.style.display = 'none';
+          mobileApplied.innerHTML = '';
+        }
+      }
+
+      // Sync the desktop FilterBar pill labels + panel option states. The
+      // pill labels were rendered server-side, so without this they go
+      // stale as soon as the user makes a client-side change.
+      syncFilterBarUi(filters, islands.ref);
+      // Same for the mobile sheet's form state — when the user removes a
+      // chip outside the sheet, the input inside should reflect that next
+      // time they open it.
+      syncMobileSheetUi(filters);
+
+      // Map markers — defer to MapView's own update method. If the map hasn't
+      // been initialised yet (user is on list view), this is a no-op.
+      window.__lucaseatsMap?.updateMarkers([...visibleIds]);
+    }
+
+    function syncFilterBarUi(filters: Filters, ref: ReferenceData) {
+      const bar = document.querySelector<HTMLElement>('.filter-bar');
+      if (!bar) return;
+
+      const labelOf = (sel: string) => bar.querySelector<HTMLElement>(`${sel} [data-pill-label]`);
+      const pillOf = (sel: string) => bar.querySelector<HTMLButtonElement>(`${sel} [data-pill-trigger]`);
+
+      // Cuisine
+      const cuisines = filters.cuisines ?? [];
+      const cuisineLabel = cuisines.length === 0
+        ? 'Any'
+        : cuisines.length === 1 ? cuisines[0] : `${cuisines.length} selected`;
+      const cl = labelOf('[data-name="cuisine"]');
+      if (cl) cl.textContent = cuisineLabel;
+      pillOf('[data-name="cuisine"]')?.classList.toggle('on', cuisines.length > 0);
+      bar.querySelectorAll<HTMLElement>('[data-name="cuisine"] .opt[data-multi-value]').forEach((opt) => {
+        const value = opt.dataset.multiValue ?? '';
+        const on = cuisines.includes(value);
+        opt.classList.toggle('on', on);
+        opt.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+      const cuisineClear = bar.querySelector<HTMLElement>('[data-name="cuisine"] .opt[data-clear-this]');
+      if (cuisineClear) cuisineClear.toggleAttribute('hidden', cuisines.length === 0);
+
+      // Location
+      const regionSlugs = filters.regions ?? [];
+      const suburbSlugs = filters.locations ?? [];
+      const totalLoc = regionSlugs.length + suburbSlugs.length;
+      const locLabel = (() => {
+        if (totalLoc === 0) return 'Anywhere';
+        if (totalLoc === 1) {
+          if (regionSlugs.length === 1) {
+            const slug = regionSlugs[0];
+            return ref.regions.find((r) => r.slug === slug)?.name ?? slug;
+          }
+          const slug = suburbSlugs[0];
+          return ref.locations.find((l) => l.slug === slug)?.name ?? slug;
+        }
+        return `${totalLoc} selected`;
+      })();
+      const ll = labelOf('[data-name="location"]');
+      if (ll) ll.textContent = locLabel;
+      pillOf('[data-name="location"]')?.classList.toggle('on', totalLoc > 0);
+      bar.querySelectorAll<HTMLElement>('[data-name="location"] .opt[data-multi-value]').forEach((opt) => {
+        const value = opt.dataset.multiValue ?? '';
+        const on = value.startsWith('region:')
+          ? regionSlugs.includes(value.slice('region:'.length))
+          : suburbSlugs.includes(value);
+        opt.classList.toggle('on', on);
+        opt.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+      const locClear = bar.querySelector<HTMLElement>('[data-name="location"] .opt[data-clear-this]');
+      if (locClear) locClear.toggleAttribute('hidden', totalLoc === 0);
+
+      // Sort
+      const sortLabels: Record<string, string> = { rating: 'Best first', recent: 'Recently visited', name: 'A→Z' };
+      const sortKey = filters.sort ?? 'name';
+      const sl = labelOf('[data-name="sort"]');
+      if (sl) sl.textContent = sortLabels[sortKey];
+      pillOf('[data-name="sort"]')?.classList.toggle('on', sortKey !== 'name');
+      bar.querySelectorAll<HTMLElement>('[data-name="sort"] .opt').forEach((opt) => {
+        const v = opt.dataset.value ?? '';
+        // The "A to Z" option uses data-value="" to clear sort.
+        const matches = (sortKey === 'name' && v === '') || (sortKey !== 'name' && v === sortKey);
+        opt.classList.toggle('on', matches);
+      });
+
+      // Status (visited)
+      const visitedKey = filters.visited ?? '';
+      const visitedLabels: Record<string, string> = { '': 'All', yes: 'Visited', no: 'On the list' };
+      const vl = labelOf('[data-name="visited"]');
+      if (vl) vl.textContent = visitedLabels[visitedKey];
+      pillOf('[data-name="visited"]')?.classList.toggle('on', !!visitedKey);
+      bar.querySelectorAll<HTMLElement>('[data-name="visited"] .opt').forEach((opt) => {
+        const v = opt.dataset.value ?? '';
+        opt.classList.toggle('on', v === visitedKey);
+      });
+
+      // Top-rated
+      const topRated = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
+      const topBtn = bar.querySelector<HTMLButtonElement>('[data-top-rated]');
+      if (topBtn) {
+        topBtn.classList.toggle('on', topRated);
+        topBtn.setAttribute('aria-pressed', topRated ? 'true' : 'false');
+        const check = topBtn.querySelector<HTMLElement>('.check');
+        if (check) check.textContent = topRated ? '✓' : '';
+      }
+
+      // Vibe + price chip checkbox sync (URL → DOM, in case a chip-X
+      // removal updated the URL but didn't touch the matching input).
+      bar.querySelectorAll<HTMLInputElement>('.vibe-chip input').forEach((cb) => {
+        const checked = (filters.vibes ?? []).includes(cb.value);
+        cb.checked = checked;
+        cb.closest<HTMLLabelElement>('label')?.classList.toggle('on', checked);
+      });
+      bar.querySelectorAll<HTMLInputElement>('.price-chip input').forEach((cb) => {
+        const checked = (filters.price ?? []).includes(Number(cb.value));
+        cb.checked = checked;
+        cb.closest<HTMLLabelElement>('label')?.classList.toggle('on', checked);
+      });
+
+      // Search input
+      const qInput = bar.querySelector<HTMLInputElement>('input[name="q"]');
+      if (qInput && document.activeElement !== qInput) {
+        qInput.value = filters.q ?? '';
+      }
+    }
+
+    function syncMobileSheetUi(filters: Filters) {
+      const sheet = document.querySelector<HTMLElement>('[data-mfs-root]');
+      if (!sheet) return;
+
+      const setCheckbox = (name: string, values: (string | number)[]) => {
+        sheet.querySelectorAll<HTMLInputElement>(`input[type="checkbox"][name="${name}"]`).forEach((cb) => {
+          const checked = values.map(String).includes(cb.value);
+          cb.checked = checked;
+          cb.closest<HTMLLabelElement>('label')?.classList.toggle('on', checked);
+        });
+      };
+      const setRadio = (name: string, value: string) => {
+        sheet.querySelectorAll<HTMLInputElement>(`input[type="radio"][name="${name}"]`).forEach((rb) => {
+          rb.checked = rb.value === value;
+        });
+        sheet.querySelectorAll<HTMLLabelElement>('.mfs-seg').forEach((seg) => {
+          const rb = seg.querySelector<HTMLInputElement>('input[type="radio"]');
+          seg.classList.toggle('on', !!rb && rb.checked);
+        });
+      };
+
+      setCheckbox('cuisine', filters.cuisines ?? []);
+      const locValues = [
+        ...(filters.regions ?? []).map((r) => `region:${r}`),
+        ...(filters.locations ?? []),
+      ];
+      setCheckbox('location', locValues);
+      setCheckbox('price', filters.price ?? []);
+      setCheckbox('vibes', filters.vibes ?? []);
+
+      const sortValue = filters.sort && filters.sort !== 'name' ? filters.sort : '';
+      setRadio('sort', sortValue);
+      setRadio('visited', filters.visited ?? '');
+
+      const minRating = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
+      const topInput = sheet.querySelector<HTMLInputElement>('[data-mfs-toprated-input]');
+      if (topInput) topInput.value = minRating ? String(TOP_RATED_THRESHOLD) : '';
+      const topBtn = sheet.querySelector<HTMLButtonElement>('[data-mfs-toprated]');
+      if (topBtn) {
+        topBtn.classList.toggle('on', minRating);
+        topBtn.setAttribute('aria-pressed', minRating ? 'true' : 'false');
+        const check = topBtn.querySelector<HTMLElement>('.check');
+        if (check) check.textContent = minRating ? '✓' : '';
+      }
+
+      // Outer search input (above the sheet, but conceptually mobile UI).
+      const qInput = document.querySelector<HTMLInputElement>('.mfs-search-row input[name="q"]');
+      if (qInput && document.activeElement !== qInput) {
+        qInput.value = filters.q ?? '';
+      }
+    }
+
+    function buildMobileAppliedChips(filters: Filters, ref: ReferenceData, currentUrl: URL): string {
+      const escape = (s: string) => s.replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)
+      );
+      const urlWithout = (name: string, value?: string): string => {
+        const params = new URLSearchParams(currentUrl.search);
+        if (value !== undefined) {
+          const all = params.getAll(name);
+          params.delete(name);
+          for (const v of all) if (v !== value) params.append(name, v);
+        } else {
+          params.delete(name);
+        }
+        const qs = params.toString();
+        return qs ? `/all?${qs}` : '/all';
+      };
+      const chip = (label: string, href: string) =>
+        `<a href="${escape(href)}" class="mfs-applied-chip"><span>${escape(label)}</span><span class="x" aria-hidden="true">×</span></a>`;
+
+      const out: string[] = [];
+      for (const c of filters.cuisines ?? []) out.push(chip(c, urlWithout('cuisine', c)));
+      for (const slug of filters.regions ?? []) {
+        const r = ref.regions.find((x) => x.slug === slug);
+        out.push(chip(r?.name ?? slug, urlWithout('location', `region:${slug}`)));
+      }
+      for (const slug of filters.locations ?? []) {
+        const l = ref.locations.find((x) => x.slug === slug);
+        out.push(chip(l?.name ?? slug, urlWithout('location', slug)));
+      }
+      if (filters.visited === 'yes') out.push(chip('Visited', urlWithout('visited')));
+      else if (filters.visited === 'no') out.push(chip('On the list', urlWithout('visited')));
+      if (filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD) {
+        out.push(chip(`Top rated (${TOP_RATED_THRESHOLD}+)`, urlWithout('minRating')));
+      }
+      for (const tier of filters.price ?? []) {
+        const sym = PRICE_SYMBOLS[tier] ?? `$${tier}`;
+        out.push(chip(sym, urlWithout('price', String(tier))));
+      }
+      for (const slug of filters.vibes ?? []) {
+        const t = ref.tags.find((x) => x.slug === slug);
+        if (t) out.push(chip(t.label, urlWithout('vibes', slug)));
+      }
+
+      if (out.length === 0) return '';
+      const view = currentUrl.searchParams.get('view');
+      const clearHref = view === 'map' ? '/all?view=map' : '/all';
+      out.push(`<a href="${escape(clearHref)}" class="mfs-applied-clear" data-clear-all>Clear all</a>`);
+      return out.join('');
+    }
+
+    // Expose the applier so FilterBar / MobileFilterSheet handlers can call it
+    // after they mutate the URL.
+    window.__lucaseatsApplyFilters = applyFilters;
+
+    // Event delegation for the rebuilt chip rows + the dynamic Clear-all
+    // anchors. We listen on document so re-renders don't need to re-attach.
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (!target) return;
+
+      // Clear-all link → strip every filter param except `view`.
+      const clearAll = target.closest<HTMLAnchorElement>('[data-clear-all]');
+      if (clearAll) {
+        e.preventDefault();
+        const view = new URLSearchParams(window.location.search).get('view');
+        const next = view === 'map' ? '/all?view=map' : '/all';
+        window.history.replaceState({}, '', next);
+        applyFilters();
+        return;
+      }
+
+      // Chip removal (desktop active-chip OR mobile mfs-applied-chip).
+      const chip = target.closest<HTMLElement>('.active-chip, .mfs-applied-chip');
+      if (chip) {
+        e.preventDefault();
+        let name: string | undefined;
+        let value = '';
+        if (chip.classList.contains('active-chip')) {
+          name = (chip as HTMLElement).dataset.removeName;
+          value = (chip as HTMLElement).dataset.removeValue ?? '';
+        } else {
+          // Mobile chip is an <a href>; parse its target URL diff to figure out
+          // which param to remove. Simpler: just navigate via replaceState to
+          // its href and re-apply.
+          const href = (chip as HTMLAnchorElement).getAttribute('href');
+          if (href) {
+            const dest = new URL(href, window.location.origin);
+            window.history.replaceState({}, '', dest.toString());
+            applyFilters();
+          }
+          return;
+        }
+        if (!name) return;
+        const url = new URL(window.location.href);
+        const all = url.searchParams.getAll(name);
+        url.searchParams.delete(name);
+        if (value) {
+          for (const v of all) if (v !== value) url.searchParams.append(name, v);
+        }
+        window.history.replaceState({}, '', url.toString());
+        applyFilters();
+      }
+    });
+
+    // FilterBar / MobileFilterSheet dispatch this when they update the URL.
+    window.addEventListener('lucaseats:filters-changed', () => applyFilters());
+
+    // --- View toggle (list/map) ----------------------------------------
+
     function setupViewToggle() {
       const root = document.querySelector<HTMLElement>('.results[data-view]');
       if (!root || root.dataset.viewToggleReady === '1') return;
@@ -142,9 +642,6 @@ const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
           t.setAttribute('aria-selected', String(active));
         });
         if (persist) {
-          // Push to history so back-nav from a restaurant detail page returns
-          // to the same view. Replace, not push, so multiple toggles don't
-          // bloat the history stack.
           const url = new URL(window.location.href);
           if (view === 'map') url.searchParams.set('view', 'map');
           else url.searchParams.delete('view');
@@ -153,6 +650,8 @@ const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
         if (view === 'map') {
           window.__lucaseatsMap?.init();
           window.__lucaseatsMap?.invalidate();
+          // Make sure the map is in sync with the current filter set.
+          applyFilters();
         }
       }
 
@@ -163,15 +662,23 @@ const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
         });
       });
 
-      // On load, honor `?view=map` so back-nav (and shareable links) restore
-      // the previous mode without re-toggling.
       const initial = new URLSearchParams(window.location.search).get('view');
       if (initial === 'map') setView('map', false);
     }
 
     setupViewToggle();
-    // Astro's ClientRouter swaps the DOM on soft navs; rerun setup each time.
-    document.addEventListener('astro:page-load', setupViewToggle);
+    document.addEventListener('astro:page-load', () => {
+      // Re-read islands after a soft-nav.
+      window.__lucaseatsAllData = undefined;
+      window.__lucaseatsRefData = undefined;
+      readDataIslands();
+      setupViewToggle();
+      applyFilters();
+    });
+
+    // First-load sync — covers the case where setupViewToggle ran after the
+    // map script registered itself but applyFilters hadn't been called yet.
+    applyFilters();
   </script>
 </BaseLayout>
 
@@ -200,6 +707,7 @@ const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
     padding: 2px;
     background: var(--bg);
   }
+  .view-toggle.is-empty { display: none; }
   .view-tab {
     appearance: none;
     background: transparent;
@@ -222,6 +730,15 @@ const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
   .view { display: none; }
   .results[data-view="list"] .view-list { display: block; }
   .results[data-view="map"] .view-map { display: block; }
+  /* When current filters yield zero matches, hide BOTH views (and the
+     view-toggle / count) so the empty-state callout reads cleanly without
+     a blank Google Map sitting above it. */
+  .results[data-empty-results="true"] .view-list,
+  .results[data-empty-results="true"] .view-map,
+  .results[data-empty-results="true"] .view-toggle,
+  .results[data-empty-results="true"] .count { display: none; }
+  /* Per-card visibility — flipped client-side as filters change. */
+  .filterable-card[data-hidden="true"] { display: none; }
   .results-list {
     display: grid;
     grid-template-columns: 1fr;
@@ -252,6 +769,7 @@ const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
     max-width: 32rem;
     margin: 0 auto;
   }
+  .empty[hidden] { display: none; }
   .empty h2 {
     font-family: var(--serif);
     font-size: clamp(1.5rem, 3vw, 1.875rem);

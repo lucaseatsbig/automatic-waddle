@@ -69,11 +69,18 @@ export async function getTags(db: D1Database): Promise<Tag[]> {
 
 export async function getCuisines(db: D1Database): Promise<string[]> {
   return memoizeReference('cuisines', async () => {
+    // Sourced from the restaurant_cuisines join table so a place tagged
+    // "American, Japanese" contributes BOTH cuisines to the dropdown,
+    // rather than the literal combined string. Case-insensitive dedupe
+    // keeps "american" / "American" from fragmenting the list.
     const { results } = await db
       .prepare(
-        "SELECT DISTINCT cuisine FROM restaurants WHERE cuisine IS NOT NULL AND cuisine <> '' ORDER BY cuisine"
+        `SELECT cuisine, MIN(rowid) AS first_row
+           FROM restaurant_cuisines
+          GROUP BY LOWER(cuisine)
+          ORDER BY LOWER(cuisine)`
       )
-      .all<{ cuisine: string }>();
+      .all<{ cuisine: string; first_row: number }>();
     return results.map((r) => r.cuisine);
   });
 }
@@ -174,6 +181,90 @@ function expandPluralVariants(token: string): string[] {
   return Array.from(set);
 }
 
+/**
+ * Fetch every published restaurant with the extra fields the client-side
+ * filter on /all needs (suburb slug, all meal_types reviewed, pre-built
+ * search haystack). One round-trip — used to seed the page so subsequent
+ * filter changes happen entirely in the browser without re-fetching.
+ */
+export async function getRestaurantsForClientFilter(
+  db: D1Database
+): Promise<import('./filter').FilterableRestaurant[]> {
+  const cards = await searchRestaurants(db, {});
+  const ids = cards.map((c) => c.id).filter((n) => Number.isInteger(n) && n > 0);
+  if (ids.length === 0) return [];
+
+  const idList = ids.join(',');
+
+  // Suburb slug per restaurant (the card data only carries the display name).
+  const suburbRows = await db
+    .prepare(`SELECT res.id, loc.slug FROM restaurants res
+                LEFT JOIN locations loc ON loc.id = res.location_id
+               WHERE res.id IN (${idList})`)
+    .all<{ id: number; slug: string | null }>();
+  const suburbBy = new Map(suburbRows.results.map((r) => [r.id, r.slug ?? null]));
+
+  // All distinct meal_types each restaurant has been reviewed with.
+  const mealRows = await db
+    .prepare(`SELECT rv.restaurant_id AS id, rv.meal_type
+                FROM reviews rv
+               WHERE rv.status = 'published' AND rv.meal_type IS NOT NULL
+                 AND rv.restaurant_id IN (${idList})
+               GROUP BY rv.restaurant_id, rv.meal_type`)
+    .all<{ id: number; meal_type: string }>();
+  const mealsBy = new Map<number, string[]>();
+  for (const r of mealRows.results) {
+    const arr = mealsBy.get(r.id) ?? [];
+    arr.push(r.meal_type);
+    mealsBy.set(r.id, arr);
+  }
+
+  // Standout dish names (used to broaden text search beyond name/cuisine/suburb).
+  const dishRows = await db
+    .prepare(`SELECT rv.restaurant_id AS id, GROUP_CONCAT(DISTINCT si.name) AS dishes
+                FROM standout_items si
+                JOIN reviews rv ON rv.id = si.review_id
+               WHERE rv.status = 'published' AND si.is_standout = 1
+                 AND rv.restaurant_id IN (${idList})
+               GROUP BY rv.restaurant_id`)
+    .all<{ id: number; dishes: string | null }>();
+  const dishesBy = new Map<number, string>();
+  for (const r of dishRows.results) {
+    if (r.dishes) dishesBy.set(r.id, r.dishes);
+  }
+
+  // All cuisines per restaurant (multi-cuisine support — see migration 0010).
+  const cuisineRows = await db
+    .prepare(`SELECT restaurant_id AS id, cuisine
+                FROM restaurant_cuisines
+               WHERE restaurant_id IN (${idList})
+               ORDER BY restaurant_id, sort_order`)
+    .all<{ id: number; cuisine: string }>();
+  const cuisinesBy = new Map<number, string[]>();
+  for (const r of cuisineRows.results) {
+    const arr = cuisinesBy.get(r.id) ?? [];
+    arr.push(r.cuisine);
+    cuisinesBy.set(r.id, arr);
+  }
+
+  return cards.map((c) => {
+    const dishes = dishesBy.get(c.id) ?? '';
+    const allCuisines = cuisinesBy.get(c.id) ?? (c.cuisine ? [c.cuisine] : []);
+    const tagLabels = c.tags.map((t) => t.label).join(' ');
+    const search_text = [c.name, allCuisines.join(' '), c.location ?? '', dishes, tagLabels]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return {
+      ...c,
+      location_slug: suburbBy.get(c.id) ?? null,
+      meal_types: mealsBy.get(c.id) ?? [],
+      cuisines: allCuisines,
+      search_text,
+    };
+  });
+}
+
 export async function searchRestaurants(
   db: D1Database,
   f: Filters
@@ -208,7 +299,13 @@ export async function searchRestaurants(
     }
   }
   if (f.cuisines && f.cuisines.length > 0) {
-    where.push(`res.cuisine IN (${f.cuisines.map(() => '?').join(',')})`);
+    // Match against the restaurant_cuisines join table (case-insensitive)
+    // so "Butter" tagged "American, Japanese" matches a filter for either.
+    where.push(`EXISTS (
+      SELECT 1 FROM restaurant_cuisines rc
+       WHERE rc.restaurant_id = res.id
+         AND LOWER(rc.cuisine) IN (${f.cuisines.map(() => 'LOWER(?)').join(',')})
+    )`);
     params.push(...f.cuisines);
   }
   // Combine selected regions (each expands to its suburbs) and explicit suburb
@@ -402,7 +499,7 @@ export async function getRestaurantBySlug(
     }>();
   if (!row) return null;
 
-  const [{ results: tagRows }, { results: reviewRows }] = await Promise.all([
+  const [{ results: tagRows }, { results: reviewRows }, { results: cuisineRows }] = await Promise.all([
     db
       .prepare(
         `SELECT t.slug, t.label, t.category
@@ -428,7 +525,21 @@ export async function getRestaurantBySlug(
         commentary: string | null;
         would_return: number; instagram_url: string | null;
       }>(),
+    db
+      .prepare(
+        `SELECT cuisine FROM restaurant_cuisines
+          WHERE restaurant_id = ?
+          ORDER BY sort_order`
+      )
+      .bind(row.id)
+      .all<{ cuisine: string }>(),
   ]);
+
+  // Fall back to the legacy single-string cuisine if the join table hasn't
+  // been backfilled yet (e.g. local-only DB without 0010 + the backfill SQL).
+  const cuisines = cuisineRows.length > 0
+    ? cuisineRows.map((r) => r.cuisine)
+    : (row.cuisine ? [row.cuisine] : []);
 
   const reviewIds = reviewRows.map((r) => r.id);
   const photosByReview = new Map<number, ReviewDetail['photos']>();
@@ -490,7 +601,8 @@ export async function getRestaurantBySlug(
     id: row.id,
     slug: row.slug,
     name: row.name,
-    cuisine: row.cuisine,
+    cuisine: cuisines[0] ?? row.cuisine,
+    cuisines,
     location: row.location,
     address: row.address,
     price_tier: row.price_tier,
@@ -787,14 +899,23 @@ export async function getRestaurantForEdit(
        FROM restaurants WHERE id = ?`
     )
     .bind(id)
-    .first<Omit<RestaurantEditData, 'tag_ids'>>();
+    .first<Omit<RestaurantEditData, 'tag_ids' | 'cuisines'>>();
   if (!row) return null;
 
-  const { results: tagRows } = await db
-    .prepare('SELECT tag_id FROM restaurant_tags WHERE restaurant_id = ?')
-    .bind(id)
-    .all<{ tag_id: number }>();
-  return { ...row, tag_ids: tagRows.map((t) => t.tag_id) };
+  const [{ results: tagRows }, { results: cuisineRows }] = await Promise.all([
+    db
+      .prepare('SELECT tag_id FROM restaurant_tags WHERE restaurant_id = ?')
+      .bind(id)
+      .all<{ tag_id: number }>(),
+    db
+      .prepare('SELECT cuisine FROM restaurant_cuisines WHERE restaurant_id = ? ORDER BY sort_order')
+      .bind(id)
+      .all<{ cuisine: string }>(),
+  ]);
+  const cuisines = cuisineRows.length > 0
+    ? cuisineRows.map((c) => c.cuisine)
+    : (row.cuisine ? [row.cuisine] : []);
+  return { ...row, tag_ids: tagRows.map((t) => t.tag_id), cuisines };
 }
 
 export interface RestaurantInput {
@@ -813,7 +934,45 @@ export interface RestaurantInput {
   tag_ids: number[];
 }
 
+/**
+ * Splits the cuisine input — accepts comma / slash / "and" / "&" separators
+ * and dedupes case-insensitively while keeping the user's original casing
+ * for the first occurrence. The first element becomes the primary (used
+ * as restaurants.cuisine and shown on cards).
+ */
+function splitCuisines(input: string | null | undefined): string[] {
+  if (!input) return [];
+  const parts = String(input)
+    .split(/\s*[,/]\s*|\s+&\s+|\s+and\s+/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const seen = new Map<string, string>();
+  for (const p of parts) {
+    const key = p.toLowerCase();
+    if (!seen.has(key)) seen.set(key, p);
+  }
+  return [...seen.values()];
+}
+
+async function replaceRestaurantCuisines(
+  db: D1Database,
+  restaurantId: number,
+  cuisines: string[]
+): Promise<void> {
+  await db
+    .prepare('DELETE FROM restaurant_cuisines WHERE restaurant_id = ?')
+    .bind(restaurantId)
+    .run();
+  if (cuisines.length === 0) return;
+  const stmt = db.prepare(
+    'INSERT INTO restaurant_cuisines (restaurant_id, cuisine, sort_order) VALUES (?, ?, ?)'
+  );
+  await db.batch(cuisines.map((c, i) => stmt.bind(restaurantId, c, i)));
+}
+
 export async function createRestaurant(db: D1Database, data: RestaurantInput): Promise<number> {
+  const cuisines = splitCuisines(data.cuisine);
+  const primaryCuisine = cuisines[0] ?? data.cuisine ?? null;
   const res = await db
     .prepare(
       `INSERT INTO restaurants
@@ -824,7 +983,7 @@ export async function createRestaurant(db: D1Database, data: RestaurantInput): P
     .bind(
       data.slug,
       data.name,
-      data.cuisine,
+      primaryCuisine,
       data.location_id,
       data.address,
       data.price_tier,
@@ -838,6 +997,7 @@ export async function createRestaurant(db: D1Database, data: RestaurantInput): P
     .run();
   const id = Number(res.meta.last_row_id);
   await replaceRestaurantTags(db, id, data.tag_ids);
+  await replaceRestaurantCuisines(db, id, cuisines);
   return id;
 }
 
@@ -846,6 +1006,8 @@ export async function updateRestaurant(
   id: number,
   data: RestaurantInput
 ): Promise<void> {
+  const cuisines = splitCuisines(data.cuisine);
+  const primaryCuisine = cuisines[0] ?? data.cuisine ?? null;
   await db
     .prepare(
       `UPDATE restaurants SET
@@ -857,7 +1019,7 @@ export async function updateRestaurant(
     .bind(
       data.slug,
       data.name,
-      data.cuisine,
+      primaryCuisine,
       data.location_id,
       data.address,
       data.price_tier,
@@ -871,6 +1033,7 @@ export async function updateRestaurant(
     )
     .run();
   await replaceRestaurantTags(db, id, data.tag_ids);
+  await replaceRestaurantCuisines(db, id, cuisines);
 }
 
 async function replaceRestaurantTags(

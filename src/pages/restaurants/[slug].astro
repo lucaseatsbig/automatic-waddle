@@ -135,11 +135,14 @@ const seoImage = `/api/og/${restaurant.slug}.jpg`;
     <section class="header-block">
       <div class="info">
         <h1>{restaurant.name}</h1>
-        {(restaurant.cuisine || restaurant.location) && (
+        {((restaurant.cuisines && restaurant.cuisines.length > 0) || restaurant.cuisine || restaurant.location) && (
           <div class="primary-chips">
-            {restaurant.cuisine && (
-              <span class="chip-primary chip-cuisine">{restaurant.cuisine}</span>
-            )}
+            {(restaurant.cuisines && restaurant.cuisines.length > 0
+              ? restaurant.cuisines
+              : (restaurant.cuisine ? [restaurant.cuisine] : [])
+            ).map((c) => (
+              <span class="chip-primary chip-cuisine">{c}</span>
+            ))}
             {restaurant.location && (
               <span class="chip-primary chip-location">
                 <span class="pin" aria-hidden="true">●</span>{restaurant.location}

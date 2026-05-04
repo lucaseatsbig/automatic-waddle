@@ -114,11 +114,11 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
           <strong>Price</strong>
           <p>Five tiers, multi-select:</p>
           <div class="ex-row">
-            <span class="ex-price">$</span>
-            <span class="ex-price">$$</span>
-            <span class="ex-price">$$$</span>
-            <span class="ex-price">$$$$</span>
-            <span class="ex-price">$$$$$</span>
+            <span class="ex-price"><span class="sym">$</span><span class="rng">$0–20</span></span>
+            <span class="ex-price"><span class="sym">$$</span><span class="rng">$20–50</span></span>
+            <span class="ex-price"><span class="sym">$$$</span><span class="rng">$50–100</span></span>
+            <span class="ex-price"><span class="sym">$$$$</span><span class="rng">$100–200</span></span>
+            <span class="ex-price"><span class="sym">$$$$$</span><span class="rng">$200+</span></span>
           </div>
         </li>
         <li>
@@ -442,10 +442,18 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
     background: var(--ink) !important;
     color: var(--bg) !important;
     border-color: var(--ink) !important;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
   }
   .ex-price .sym {
     font-weight: 700;
     font-variant-numeric: tabular-nums;
+  }
+  .ex-price .rng {
+    font-weight: 400;
+    font-size: 0.85em;
+    opacity: 0.85;
   }
   .ex-vibe {
     background: var(--terracotta) !important;
