@@ -83,6 +83,10 @@ export interface RestaurantEditData {
   lng: number | null;
   wishlist_note: string | null;
   tag_ids: number[];
+  /** Meal types this restaurant serves (from restaurant_meal_types join table).
+   *  Independent of review history — a place reviewed only at dinner can
+   *  still be tagged lunch+dinner if it actually serves both. */
+  meal_types: MealType[];
 }
 
 export interface ReviewEditData {

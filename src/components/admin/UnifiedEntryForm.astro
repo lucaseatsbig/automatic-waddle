@@ -15,6 +15,10 @@ const vibes = tags.filter((t) => t.category === 'vibe');
 const dietary = tags.filter((t) => t.category === 'dietary');
 const other = tags.filter((t) => t.category === 'other');
 const meals = ['breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks'] as const;
+const mealOptions: { value: string; label: string }[] = meals.map((m) => ({
+  value: m,
+  label: m[0].toUpperCase() + m.slice(1),
+}));
 const hasMapsKey = googleMapsKey.length > 0;
 ---
 <form method="post" action="/api/admin/entry" enctype="multipart/form-data" class="entry-form" id="entry-form">
@@ -93,6 +97,17 @@ const hasMapsKey = googleMapsKey.length > 0;
       <input type="hidden" name="lat" id="lat-input" />
       <input type="hidden" name="lng" id="lng-input" />
 
+      <fieldset class="tags-group">
+        <legend>Serves</legend>
+        <div class="chips">
+          {mealOptions.map((m) => (
+            <label class="chip">
+              <input type="checkbox" name="meal_types" value={m.value} />
+              {m.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <fieldset class="tags-group">
         <legend>Vibes</legend>
         <div class="chips">

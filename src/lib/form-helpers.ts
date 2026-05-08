@@ -26,6 +26,21 @@ function ids(form: FormData, key: string): number[] {
     .filter((n) => Number.isFinite(n));
 }
 
+const VALID_MEALS: readonly MealType[] = [
+  'breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks',
+];
+
+function mealTypes(form: FormData, key: string): MealType[] {
+  const valid = new Set<string>(VALID_MEALS);
+  const seen = new Set<MealType>();
+  for (const v of form.getAll(key)) {
+    if (typeof v !== 'string') continue;
+    const trimmed = v.trim();
+    if (valid.has(trimmed)) seen.add(trimmed as MealType);
+  }
+  return [...seen];
+}
+
 export function parseRestaurantForm(form: FormData) {
   return {
     name: str(form, 'name') ?? '',
@@ -41,12 +56,9 @@ export function parseRestaurantForm(form: FormData) {
     lng: num(form, 'lng'),
     wishlist_note: str(form, 'wishlist_note'),
     tag_ids: ids(form, 'tag_ids'),
+    meal_types: mealTypes(form, 'meal_types'),
   };
 }
-
-const VALID_MEALS: readonly MealType[] = [
-  'breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'drinks',
-];
 
 export function parseReviewForm(form: FormData) {
   const meal = str(form, 'meal_type');

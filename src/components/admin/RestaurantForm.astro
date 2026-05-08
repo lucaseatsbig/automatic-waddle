@@ -16,6 +16,16 @@ const tagIds = new Set(r?.tag_ids ?? []);
 const vibes = tags.filter((t) => t.category === 'vibe');
 const dietary = tags.filter((t) => t.category === 'dietary');
 const other = tags.filter((t) => t.category === 'other');
+const mealOptions: { value: string; label: string }[] = [
+  { value: 'breakfast', label: 'Breakfast' },
+  { value: 'brunch',    label: 'Brunch' },
+  { value: 'lunch',     label: 'Lunch' },
+  { value: 'dinner',    label: 'Dinner' },
+  { value: 'dessert',   label: 'Dessert' },
+  { value: 'snack',     label: 'Snack' },
+  { value: 'drinks',    label: 'Drinks' },
+];
+const mealSet = new Set<string>(r?.meal_types ?? []);
 const currentLocationName = r?.location_id
   ? locations.find((l) => l.id === r.location_id)?.name ?? ''
   : '';
@@ -108,6 +118,18 @@ const currentLocationName = r?.location_id
       <textarea name="wishlist_note" placeholder="What you've heard or want to try">{r?.wishlist_note ?? ''}</textarea>
     </label>
   </div>
+
+  <fieldset class="tags-group">
+    <legend>Serves</legend>
+    <div class="chips">
+      {mealOptions.map((m) => (
+        <label class={`chip ${mealSet.has(m.value) ? 'on' : ''}`}>
+          <input type="checkbox" name="meal_types" value={m.value} checked={mealSet.has(m.value)} />
+          {m.label}
+        </label>
+      ))}
+    </div>
+  </fieldset>
 
   <fieldset class="tags-group">
     <legend>Vibes</legend>

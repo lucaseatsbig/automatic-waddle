@@ -227,19 +227,37 @@ export async function getRestaurantsForClientFilter(
     .all<{ id: number; slug: string | null }>();
   const suburbBy = new Map(suburbRows.results.map((r) => [r.id, r.slug ?? null]));
 
-  // All distinct meal_types each restaurant has been reviewed with.
-  const mealRows = await db
-    .prepare(`SELECT rv.restaurant_id AS id, rv.meal_type
-                FROM reviews rv
-               WHERE rv.status = 'published' AND rv.meal_type IS NOT NULL
-                 AND rv.restaurant_id IN (${idList})
-               GROUP BY rv.restaurant_id, rv.meal_type`)
-    .all<{ id: number; meal_type: string }>();
-  const mealsBy = new Map<number, string[]>();
-  for (const r of mealRows.results) {
-    const arr = mealsBy.get(r.id) ?? [];
-    arr.push(r.meal_type);
-    mealsBy.set(r.id, arr);
+  // Meal types per restaurant — union of two sources:
+  //   1. restaurant_meal_types join table (curated in admin + auto-derived
+  //      from Google Places hours; source of truth for the meal filter).
+  //   2. Distinct review.meal_type values (a place reviewed at lunch is at
+  //      minimum a lunch spot — kept as a safety net during the transition
+  //      from "meal filter derived from reviews" to "meal filter from the
+  //      join table").
+  const [mealJoinRows, mealReviewRows] = await Promise.all([
+    db
+      .prepare(`SELECT restaurant_id AS id, meal_type
+                  FROM restaurant_meal_types
+                 WHERE restaurant_id IN (${idList})`)
+      .all<{ id: number; meal_type: string }>(),
+    db
+      .prepare(`SELECT rv.restaurant_id AS id, rv.meal_type
+                  FROM reviews rv
+                 WHERE rv.status = 'published' AND rv.meal_type IS NOT NULL
+                   AND rv.restaurant_id IN (${idList})
+                 GROUP BY rv.restaurant_id, rv.meal_type`)
+      .all<{ id: number; meal_type: string }>(),
+  ]);
+  const mealsBy = new Map<number, Set<string>>();
+  for (const r of mealJoinRows.results) {
+    const set = mealsBy.get(r.id) ?? new Set<string>();
+    set.add(r.meal_type);
+    mealsBy.set(r.id, set);
+  }
+  for (const r of mealReviewRows.results) {
+    const set = mealsBy.get(r.id) ?? new Set<string>();
+    set.add(r.meal_type);
+    mealsBy.set(r.id, set);
   }
 
   // Standout dish names (used to broaden text search beyond name/cuisine/suburb).
@@ -281,7 +299,7 @@ export async function getRestaurantsForClientFilter(
     return {
       ...c,
       location_slug: suburbBy.get(c.id) ?? null,
-      meal_types: mealsBy.get(c.id) ?? [],
+      meal_types: [...(mealsBy.get(c.id) ?? [])],
       cuisines: allCuisines,
       search_text,
     };
@@ -936,7 +954,7 @@ export async function getRestaurantForEdit(
     .first<Omit<RestaurantEditData, 'tag_ids' | 'cuisines'>>();
   if (!row) return null;
 
-  const [{ results: tagRows }, { results: cuisineRows }] = await Promise.all([
+  const [{ results: tagRows }, { results: cuisineRows }, { results: mealRows }] = await Promise.all([
     db
       .prepare('SELECT tag_id FROM restaurant_tags WHERE restaurant_id = ?')
       .bind(id)
@@ -945,11 +963,20 @@ export async function getRestaurantForEdit(
       .prepare('SELECT cuisine FROM restaurant_cuisines WHERE restaurant_id = ? ORDER BY sort_order')
       .bind(id)
       .all<{ cuisine: string }>(),
+    db
+      .prepare('SELECT meal_type FROM restaurant_meal_types WHERE restaurant_id = ?')
+      .bind(id)
+      .all<{ meal_type: string }>(),
   ]);
   const cuisines = cuisineRows.length > 0
     ? cuisineRows.map((c) => c.cuisine)
     : (row.cuisine ? [row.cuisine] : []);
-  return { ...row, tag_ids: tagRows.map((t) => t.tag_id), cuisines };
+  return {
+    ...row,
+    tag_ids: tagRows.map((t) => t.tag_id),
+    cuisines,
+    meal_types: mealRows.map((m) => m.meal_type as MealType),
+  };
 }
 
 export interface RestaurantInput {
@@ -966,6 +993,7 @@ export interface RestaurantInput {
   lng: number | null;
   wishlist_note: string | null;
   tag_ids: number[];
+  meal_types: MealType[];
 }
 
 /**
@@ -1004,6 +1032,22 @@ async function replaceRestaurantCuisines(
   await db.batch(cuisines.map((c, i) => stmt.bind(restaurantId, c, i)));
 }
 
+async function replaceRestaurantMealTypes(
+  db: D1Database,
+  restaurantId: number,
+  mealTypes: MealType[]
+): Promise<void> {
+  await db
+    .prepare('DELETE FROM restaurant_meal_types WHERE restaurant_id = ?')
+    .bind(restaurantId)
+    .run();
+  if (mealTypes.length === 0) return;
+  const stmt = db.prepare(
+    'INSERT INTO restaurant_meal_types (restaurant_id, meal_type) VALUES (?, ?)'
+  );
+  await db.batch(mealTypes.map((m) => stmt.bind(restaurantId, m)));
+}
+
 export async function createRestaurant(db: D1Database, data: RestaurantInput): Promise<number> {
   const cuisines = splitCuisines(data.cuisine);
   const primaryCuisine = cuisines[0] ?? data.cuisine ?? null;
@@ -1032,6 +1076,7 @@ export async function createRestaurant(db: D1Database, data: RestaurantInput): P
   const id = Number(res.meta.last_row_id);
   await replaceRestaurantTags(db, id, data.tag_ids);
   await replaceRestaurantCuisines(db, id, cuisines);
+  await replaceRestaurantMealTypes(db, id, data.meal_types);
   return id;
 }
 
@@ -1068,6 +1113,7 @@ export async function updateRestaurant(
     .run();
   await replaceRestaurantTags(db, id, data.tag_ids);
   await replaceRestaurantCuisines(db, id, cuisines);
+  await replaceRestaurantMealTypes(db, id, data.meal_types);
 }
 
 async function replaceRestaurantTags(

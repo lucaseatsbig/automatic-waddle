@@ -28,6 +28,7 @@ export const POST: APIRoute = async ({ params, request, redirect }) => {
     lng: parsed.lng,
     wishlist_note: parsed.wishlist_note,
     tag_ids: parsed.tag_ids,
+    meal_types: parsed.meal_types,
   });
   return redirect(`/admin/restaurants/${id}`);
 };

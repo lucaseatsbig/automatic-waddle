@@ -75,6 +75,7 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
       lng: rest.lng,
       wishlist_note: wishlistNote,
       tag_ids: rest.tag_ids,
+      meal_types: rest.meal_types,
     };
     restaurantId = await createRestaurant(env.DB, input);
     restaurantSlug = slug;

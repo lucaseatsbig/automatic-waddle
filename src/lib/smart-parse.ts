@@ -30,19 +30,32 @@ export interface SmartParseResult {
   matched: boolean;
 }
 
-// Meal type extraction is deliberately disabled. The server's meal filter
-// only matches restaurants that have been REVIEWED with that exact meal
-// type, so a CBD dinner spot wouldn't surface for "lunch cbd" even if it
-// serves lunch. Better to ignore meal words for now and let the structured
-// filters (cuisine / suburb / vibe) do the work. Re-enable when meal data
-// reflects what's actually available, not just what's been reviewed.
+// Meal-type phrases. Keys are normalised search phrases; values are the
+// canonical MealType slug they map to. Indexed as type='meal' phrases so
+// pass 1 of the parser excises them and populates the `meal` filter.
 //
-// Listed here so meal-type words can be stopworded and not pollute q.
-const MEAL_WORDS = [
-  'breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack', 'snacks',
-  'drinks', 'drink', 'cocktail', 'cocktails', 'sweets', 'sweet',
-  'brekkie', 'brekky',
-];
+// Backed by the `restaurant_meal_types` join table (migration 0011), which
+// is curated in the admin form + auto-derived from Google Places hours —
+// so a CBD spot reviewed only at dinner can still surface for "lunch cbd"
+// when it actually serves lunch.
+const MEAL_PHRASES: Record<string, string> = {
+  breakfast: 'breakfast',
+  brekkie: 'breakfast',
+  brekky: 'breakfast',
+  brunch: 'brunch',
+  lunch: 'lunch',
+  dinner: 'dinner',
+  dessert: 'dessert',
+  desserts: 'dessert',
+  sweet: 'dessert',
+  sweets: 'dessert',
+  snack: 'snack',
+  snacks: 'snack',
+  drinks: 'drinks',
+  drink: 'drinks',
+  cocktail: 'drinks',
+  cocktails: 'drinks',
+};
 
 // Natural-language price cues → tier sets. Tiers map to the canonical
 // admin-form ranges (see RestaurantForm.astro):
@@ -131,6 +144,19 @@ const TAG_SYNONYMS: Record<string, string[]> = {
   'live show': ['music'],
 };
 
+// Location synonyms — colloquial names for regions/suburbs that don't
+// match the canonical name. Targets are slugs from src/lib/regions.ts
+// (for regions) or the locations table (for suburbs). Like the other
+// synonym maps, only fires when the target slug is actually present.
+const LOCATION_SYNONYMS: Record<string, { type: 'region' | 'suburb'; value: string }[]> = {
+  // "the North Shore" colloquially = Lower North Shore in Sydney
+  'north shore': [{ type: 'region', value: 'lower-north-shore' }],
+  'the north shore': [{ type: 'region', value: 'lower-north-shore' }],
+  // City / town are common shorthand for the CBD
+  'the city': [{ type: 'suburb', value: 'cbd' }],
+  'city': [{ type: 'suburb', value: 'cbd' }],
+};
+
 // Cuisine synonyms — same idea but for cuisine names. Only fires when a
 // matching cuisine value exists in the page's cuisine list (case-insensitive).
 const CUISINE_SYNONYMS: Record<string, string[]> = {
@@ -174,8 +200,10 @@ const STOPWORDS = new Set([
   // "expensive food" reduce to just the price/meal extraction without
   // leaking "price" or "cost" into q as a literal text-search term.
   'price', 'priced', 'pricing', 'cost', 'budget',
-  // Meal-type words — see MEAL_WORDS comment above for rationale.
-  ...MEAL_WORDS,
+  // Meal-type words also live in the phrase index and are excised in pass 1.
+  // Keeping them stopworded is a safety net so any variant that doesn't get
+  // phrase-matched still doesn't leak into the q text-search term.
+  ...Object.keys(MEAL_PHRASES),
 ]);
 
 /**
@@ -269,7 +297,24 @@ function buildPhraseIndex(ref: SmartParseRefData): Phrase[] {
     }
   }
 
-  // Meal types are deliberately not indexed (see MEAL_WORDS comment).
+  // Location synonyms — only fire when the target slug is present in
+  // the page's regions / locations data so the synonym never applies
+  // a filter for a slug that doesn't exist.
+  const regionSlugs = new Set(ref.regions.map((r) => r.slug));
+  const suburbSlugs = new Set(ref.locations.map((l) => l.slug));
+  for (const [phrase, targets] of Object.entries(LOCATION_SYNONYMS)) {
+    for (const t of targets) {
+      const exists = t.type === 'region' ? regionSlugs.has(t.value) : suburbSlugs.has(t.value);
+      if (exists) {
+        phrases.push({ phrase: normalize(phrase), type: t.type, value: t.value });
+      }
+    }
+  }
+
+  // Meal-type phrases — see MEAL_PHRASES comment.
+  for (const [phrase, mealSlug] of Object.entries(MEAL_PHRASES)) {
+    phrases.push({ phrase: normalize(phrase), type: 'meal', value: mealSlug });
+  }
 
   // Price cues — normalise the synonym keys; values are encoded as a
   // comma-joined tier list so the Phrase shape stays a flat string.
