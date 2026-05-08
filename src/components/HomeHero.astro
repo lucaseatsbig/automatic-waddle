@@ -83,7 +83,11 @@ const { kicker, igHandle, stats = [] as StatItem[], pick } = Astro.props as Prop
   .home-hero {
     max-width: 1180px;
     margin: 0 auto;
-    padding: clamp(1.5rem, 5vw, 3rem) 1.5rem 0.5rem;
+    /* Top padding matches PageHead (used on /all) so the kicker line sits
+       at the same vertical position when navigating between pages.
+       Bottom stays tight — the stats strip + side-photo arrangement gives
+       its own vertical rhythm into the section below. */
+    padding: clamp(2.5rem, 8vw, 4.5rem) 1.5rem 0.5rem;
     display: grid;
     grid-template-columns: 1fr;
     gap: 2.5rem;
