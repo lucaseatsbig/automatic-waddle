@@ -335,17 +335,42 @@ const initialVisibleJson = JSON.stringify([...initialIdSet]).replace(/</g, '\\u0
       map.setCenter({ lat: saved.lat, lng: saved.lng });
       map.setZoom(saved.zoom);
     } else if (!bounds.isEmpty()) {
-      // Tighter padding than before so the visible restaurants fill more
-      // of the viewport. Clamp zoom into a sensible range after the
-      // initial fitBounds settles:
-      //   max 15 — single-point bounds shouldn't slam to street level
-      //   min 13 — for huge spreads (unfiltered, all of Sydney) keep us
-      //            close enough to read pins; outliers can be panned to
+      // fitBounds gets the framing right for filtered views (a handful of
+      // markers in Surry Hills → tight Surry Hills view). For wide unfiltered
+      // views it gives a "geometric" centre that can land between the dense
+      // inner cluster and outlier western/southern pins, and slams the zoom
+      // far enough out that mobile users have to pan/zoom in immediately.
+      //
+      // After fitBounds settles, classify the view:
+      //   wide   (natural zoom < 13) — recentre on the median lat/lng (robust
+      //                                to outliers — biases toward where most
+      //                                restaurants actually are) and use a
+      //                                slightly less-zoomed default that's
+      //                                friendlier on phones
+      //   normal (13–15)             — fitBounds got it right, leave as-is
+      //   tight  (> 15)              — single-point bounds; cap to 15 so
+      //                                we don't slam to street level
+      const visibleItems = items.filter((i) => initialVisible.has(i.id));
+      const median = (nums: number[]): number => {
+        const sorted = [...nums].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2
+          ? sorted[mid]
+          : (sorted[mid - 1] + sorted[mid]) / 2;
+      };
       map.fitBounds(bounds, 16);
       maps.event.addListenerOnce(map, 'idle', () => {
         const z = map.getZoom();
-        if (z > 15) map.setZoom(15);
-        else if (z < 13) map.setZoom(13);
+        if (z > 15) {
+          map.setZoom(15);
+        } else if (z < 13 && visibleItems.length > 0) {
+          const isMobile = window.matchMedia('(max-width: 600px)').matches;
+          map.setCenter({
+            lat: median(visibleItems.map((i) => i.lat)),
+            lng: median(visibleItems.map((i) => i.lng)),
+          });
+          map.setZoom(isMobile ? 12 : 13);
+        }
       });
     }
 
