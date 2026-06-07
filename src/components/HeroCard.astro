@@ -23,10 +23,16 @@ const tagsToShow = [...r.tags]
 const priceSymbol = r.price_tier ? '$'.repeat(r.price_tier) : '';
 ---
 <a href={`/restaurants/${r.slug}`} class="hero-card">
-  {heroSrc ? (
-    <img src={heroSrc} alt="" loading="eager" decoding="async" class="hero-img" />
-  ) : (
-    <div class="hero-placeholder" aria-hidden="true">{r.name.charAt(0).toUpperCase()}</div>
+  <div class="hero-placeholder" aria-hidden="true">{r.name.charAt(0).toUpperCase()}</div>
+  {heroSrc && (
+    <img
+      src={heroSrc}
+      alt=""
+      loading="eager"
+      decoding="async"
+      class="hero-img"
+      onerror="this.remove()"
+    />
   )}
   <div class="scrim" aria-hidden="true"></div>
   <span class="kicker">★ Lucas's pick</span>
@@ -70,12 +76,16 @@ const priceSymbol = r.price_tier ? '$'.repeat(r.price_tier) : '';
     .hero-card { aspect-ratio: 21 / 9; }
   }
   .hero-img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
   }
   .hero-placeholder {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     display: flex;
