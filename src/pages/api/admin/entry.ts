@@ -51,6 +51,13 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
           .bind(note, restaurantId)
           .run();
       }
+    } else if (rest.card_quote) {
+      // Logging a visit on an existing place — refresh its card one-liner so
+      // the verdict can evolve as the restaurant is revisited.
+      await env.DB
+        .prepare('UPDATE restaurants SET card_quote = ?, updated_at = unixepoch() WHERE id = ?')
+        .bind(rest.card_quote, restaurantId)
+        .run();
     }
   } else {
     const slug = await uniqueSlug(env.DB, 'restaurants', rest.slug || rest.name);
@@ -74,6 +81,7 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
       lat: rest.lat,
       lng: rest.lng,
       wishlist_note: wishlistNote,
+      card_quote: mode === 'visit' ? rest.card_quote : null,
       tag_ids: rest.tag_ids,
       meal_types: rest.meal_types,
     };

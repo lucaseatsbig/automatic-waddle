@@ -55,6 +55,7 @@ export function parseRestaurantForm(form: FormData) {
     lat: num(form, 'lat'),
     lng: num(form, 'lng'),
     wishlist_note: str(form, 'wishlist_note'),
+    card_quote: str(form, 'card_quote'),
     tag_ids: ids(form, 'tag_ids'),
     meal_types: mealTypes(form, 'meal_types'),
   };

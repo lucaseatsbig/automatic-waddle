@@ -23,6 +23,13 @@ export interface RestaurantCardData {
   location: string | null;
   price_tier: number | null;
   wishlist_note: string | null;
+  /** Short first-person one-liner shown on visited cards (the verdict).
+   *  Optional manual override — when null the card falls back to an excerpt
+   *  of `latest_commentary`. */
+  card_quote: string | null;
+  /** Commentary from the most recent published review. Used as the card
+   *  blurb when `card_quote` isn't set, so existing places aren't blank. */
+  latest_commentary: string | null;
   visited: boolean;
   review_count: number;
   avg_overall: number | null;
@@ -82,6 +89,8 @@ export interface RestaurantEditData {
   lat: number | null;
   lng: number | null;
   wishlist_note: string | null;
+  /** Short first-person one-liner shown on visited cards (the verdict). */
+  card_quote: string | null;
   tag_ids: number[];
   /** Meal types this restaurant serves (from restaurant_meal_types join table).
    *  Independent of review history — a place reviewed only at dinner can
@@ -146,6 +155,8 @@ export interface RestaurantDetail {
   lat: number | null;
   lng: number | null;
   wishlist_note: string | null;
+  /** Short first-person one-liner shown on visited cards (the verdict). */
+  card_quote: string | null;
   tags: { slug: string; label: string; category: TagCategory }[];
   reviews: ReviewDetail[];
   visit_count: number;

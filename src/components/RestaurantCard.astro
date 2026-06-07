@@ -19,6 +19,19 @@ const coverUrl = uploadedCover ?? placesCover;
 const ratingFmt = r.avg_overall != null ? r.avg_overall.toFixed(1) : null;
 const visitYear = r.latest_visit_date ? new Date(r.latest_visit_date).getFullYear() : null;
 const mealLabel = r.latest_meal_type ? r.latest_meal_type.toUpperCase() : (r.visited ? 'VISIT' : null);
+
+// Card blurb for visited places: the manual one-liner if set, otherwise an
+// excerpt of the latest review's commentary so existing places aren't blank.
+function excerpt(s: string | null, max = 100): string {
+  if (!s) return '';
+  const t = s.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const space = cut.lastIndexOf(' ');
+  return (space > 0 ? cut.slice(0, space) : cut) + '…';
+}
+const cardBlurb = r.visited ? (r.card_quote?.trim() || excerpt(r.latest_commentary)) : '';
+const blurbIsQuote = r.visited && !!r.card_quote?.trim();
 ---
 <a href={`/restaurants/${r.slug}`} class={`card ${r.visited ? '' : 'wishlist'}`}>
   <div class="photo">
@@ -51,6 +64,7 @@ const mealLabel = r.latest_meal_type ? r.latest_meal_type.toUpperCase() : (r.vis
       </div>
     )}
     {!r.visited && r.wishlist_note && <p class="wishlist-note">{r.wishlist_note}</p>}
+    {cardBlurb && <p class:list={['wishlist-note', { quote: blurbIsQuote }]}>{blurbIsQuote ? `“${cardBlurb}”` : cardBlurb}</p>}
     {r.tags.length > 0 && (
       <div class="chips">
         {r.tags.slice(0, 3).map((t) => (
@@ -218,7 +232,16 @@ const mealLabel = r.latest_meal_type ? r.latest_meal_type.toUpperCase() : (r.vis
     font-size: 0.85rem;
     line-height: 1.45;
     margin: 0;
+    /* Clamp to two lines so a longer commentary excerpt can't push the chips
+       around. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
+  /* Manual one-liner verdict: a bit more present than the muted wishlist note
+     / commentary excerpt. */
+  .wishlist-note.quote { opacity: 0.9; }
 
   /* Tag chips (vibe/dietary/other) */
   .chips {

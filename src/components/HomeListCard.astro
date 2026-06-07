@@ -37,6 +37,21 @@ function timeAgo(iso: string | null): string | null {
 
 const ago = r.visited ? timeAgo(r.latest_visit_date) : null;
 
+// Card blurb for visited places: the manual one-liner if set, otherwise an
+// excerpt of the latest review's commentary so existing places aren't blank.
+// Only the manual one-liner gets quote marks (a deliberate verdict); the
+// commentary fallback reads as a plain italic excerpt.
+function excerpt(s: string | null, max = 90): string {
+  if (!s) return '';
+  const t = s.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const space = cut.lastIndexOf(' ');
+  return (space > 0 ? cut.slice(0, space) : cut) + '…';
+}
+const cardBlurb = r.visited ? (r.card_quote?.trim() || excerpt(r.latest_commentary)) : '';
+const blurbIsQuote = r.visited && !!r.card_quote?.trim();
+
 // Surface vibe tags first ("date spot", "casual"), then dietary, then other.
 // Vibes are the most useful at-a-glance signal for browsing.
 const categoryOrder: Record<string, number> = { vibe: 0, dietary: 1, other: 2 };
@@ -56,9 +71,18 @@ const mobileOverflowWide = Math.max(0, sortedTags.length - 3);
   class:list={['card', { wishlist: !r.visited, 'desktop-hide': hideOnDesktop, compact }]}
 >
   <div class="thumb">
-    {heroSrc
-      ? <img src={heroSrc} alt="" loading="lazy" decoding="async" width="104" height="104" />
-      : <div class="placeholder" aria-hidden="true">{r.name.charAt(0).toUpperCase()}</div>}
+    <div class="placeholder" aria-hidden="true">{r.name.charAt(0).toUpperCase()}</div>
+    {heroSrc && (
+      <img
+        src={heroSrc}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        width="104"
+        height="104"
+        onerror="this.remove()"
+      />
+    )}
   </div>
   <div class="lead">
     <div class="title-row">
@@ -82,6 +106,7 @@ const mobileOverflowWide = Math.max(0, sortedTags.length - 3);
       {priceSymbol && <span class="meta-item price">{priceSymbol}</span>}
     </div>
     {!r.visited && r.wishlist_note && <p class="note">{r.wishlist_note}</p>}
+    {cardBlurb && <p class:list={['note', { quote: blurbIsQuote }]}>{blurbIsQuote ? `“${cardBlurb}”` : cardBlurb}</p>}
     <div class="mobile-tags">
       {mobileTags.map((t, i) => (
         <span class:list={[`chip chip-${t.category}`, { 'chip-extra': i >= 2 }]}>{t.label.toLowerCase()}</span>
@@ -141,6 +166,7 @@ const mobileOverflowWide = Math.max(0, sortedTags.length - 3);
   }
 
   .thumb {
+    position: relative;
     width: 88px;
     height: 88px;
     border-radius: 10px;
@@ -149,12 +175,16 @@ const mobileOverflowWide = Math.max(0, sortedTags.length - 3);
     flex-shrink: 0;
   }
   .thumb img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
   }
   .placeholder {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     display: flex;
@@ -179,6 +209,14 @@ const mobileOverflowWide = Math.max(0, sortedTags.length - 3);
     min-width: 0;
     position: relative;
     padding-right: 4.25rem;
+    /* Stretch to the full card height (cards in a row are equalised by the
+       grid) and stack as a column so the tags can be pinned to the bottom —
+       otherwise a taller name/commentary leaves the tags floating at an
+       inconsistent height, and on the shorter card of a pair they can sit
+       mid-card instead of lining up. */
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
   }
   .title-row {
     display: flex;
@@ -283,7 +321,16 @@ const mobileOverflowWide = Math.max(0, sortedTags.length - 3);
     margin: 0.3rem 0 0;
     line-height: 1.4;
     opacity: 0.75;
+    /* Clamp to two lines so a longer commentary excerpt can't blow out the
+       card height. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
+  /* The manual one-liner reads as a deliberate verdict, so give it a touch
+     more presence than the muted wishlist note / commentary excerpt. */
+  .note.quote { opacity: 0.9; }
 
   /* Tag columns — at base (mobile/compact) only .mobile-tags renders.
      The wide .tags-col + .when + .rating-col belong to the 5-col desktop
@@ -296,7 +343,11 @@ const mobileOverflowWide = Math.max(0, sortedTags.length - 3);
     flex-wrap: nowrap;
     overflow: hidden;
     justify-content: flex-start;
-    margin-top: 0.5rem;
+    /* Pinned to the bottom of the lead so tags always render at a consistent
+       height regardless of name/commentary length. padding-top keeps a gap
+       above them when the card has no spare vertical space. */
+    margin-top: auto;
+    padding-top: 0.5rem;
   }
   .tags-col {
     display: none;
@@ -397,7 +448,7 @@ const mobileOverflowWide = Math.max(0, sortedTags.length - 3);
     }
     .card.compact .thumb { width: 124px; height: 124px; border-radius: 10px; }
     .card.compact .lead { padding-right: 5rem; }
-    .card.compact .mobile-tags { gap: 0.4rem; margin-top: 0.6rem; }
+    .card.compact .mobile-tags { gap: 0.4rem; padding-top: 0.6rem; }
   }
 
   /* Inline rating in cards — Rating is rendered with size="md" so it reads

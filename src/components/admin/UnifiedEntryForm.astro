@@ -194,6 +194,12 @@ const hasMapsKey = googleMapsKey.length > 0;
       <textarea name="commentary" rows="4" placeholder="What stood out, how it felt…"></textarea>
     </label>
 
+    <label class="field">
+      <span>One-liner <em>(your verdict — shown on cards)</em></span>
+      <input type="text" name="card_quote" maxlength="140" placeholder="The vibe of your score in one line" />
+      <p class="hint">Saved on the restaurant. Update it any time you log a visit.</p>
+    </label>
+
     <div class="grid">
       <fieldset class="yn">
         <legend>Would return?</legend>
@@ -564,6 +570,7 @@ const hasMapsKey = googleMapsKey.length > 0;
     gap: 0.75rem;
   }
   .hint { color: #888; font-size: 0.8rem; margin: 0; }
+  .field span em { color: #999; font-style: normal; font-size: 0.75rem; }
 
   .tags-group { border: none; padding: 0; margin: 0; }
   .tags-group legend {

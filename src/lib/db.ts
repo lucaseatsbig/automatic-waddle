@@ -448,7 +448,7 @@ export async function searchRestaurants(
       GROUP BY r.restaurant_id
     ),
     latest_meta AS (
-      SELECT l.restaurant_id, l.review_id, l.visit_date, rv.meal_type
+      SELECT l.restaurant_id, l.review_id, l.visit_date, rv.meal_type, rv.commentary
       FROM latest l
       JOIN reviews rv ON rv.id = l.review_id
     ),
@@ -460,12 +460,13 @@ export async function searchRestaurants(
     )
     SELECT
       res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
-      res.lat, res.lng,
+      res.card_quote, res.lat, res.lng,
       loc.name AS location,
       COALESCE(pub.review_count, 0) AS review_count,
       pub.avg_overall,
       latest_meta.visit_date AS latest_visit_date,
       latest_meta.meal_type  AS latest_meal_type,
+      latest_meta.commentary AS latest_commentary,
       cover.r2_key           AS cover_r2_key,
       res.hero_photo_name    AS hero_photo_name,
       CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 1 ELSE 0 END AS visited
@@ -515,6 +516,8 @@ export async function searchRestaurants(
     location: (r.location as string | null) ?? null,
     price_tier: (r.price_tier as number | null) ?? null,
     wishlist_note: (r.wishlist_note as string | null) ?? null,
+    card_quote: (r.card_quote as string | null) ?? null,
+    latest_commentary: (r.latest_commentary as string | null) ?? null,
     visited: r.visited === 1,
     review_count: (r.review_count as number) ?? 0,
     avg_overall: (r.avg_overall as number | null) ?? null,
@@ -536,7 +539,7 @@ export async function getRestaurantBySlug(
     .prepare(
       `SELECT res.id, res.slug, res.name, res.cuisine, res.address, res.price_tier,
               res.website_url, res.maps_url, res.place_id, res.lat, res.lng, res.wishlist_note,
-              loc.name AS location
+              res.card_quote, loc.name AS location
        FROM restaurants res
        LEFT JOIN locations loc ON loc.id = res.location_id
        WHERE res.slug = ?`
@@ -547,7 +550,7 @@ export async function getRestaurantBySlug(
       address: string | null; price_tier: number | null;
       website_url: string | null; maps_url: string | null;
       place_id: string | null; lat: number | null; lng: number | null;
-      wishlist_note: string | null; location: string | null;
+      wishlist_note: string | null; card_quote: string | null; location: string | null;
     }>();
   if (!row) return null;
 
@@ -664,6 +667,7 @@ export async function getRestaurantBySlug(
     lat: row.lat,
     lng: row.lng,
     wishlist_note: row.wishlist_note,
+    card_quote: row.card_quote,
     tags: tagRows,
     reviews,
     visit_count: reviews.length,
@@ -706,12 +710,13 @@ export async function getSimilarByCuisine(
        )
        SELECT
          res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
-         res.lat, res.lng,
+         res.card_quote, res.lat, res.lng,
          loc.name AS location,
          COALESCE(pub.review_count, 0) AS review_count,
          pub.avg_overall,
          pub.latest_visit_date,
          NULL AS latest_meal_type,
+         lrv.commentary AS latest_commentary,
          cover.r2_key AS cover_r2_key,
          res.hero_photo_name AS hero_photo_name,
          CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 1 ELSE 0 END AS visited
@@ -719,6 +724,7 @@ export async function getSimilarByCuisine(
        LEFT JOIN locations loc ON loc.id = res.location_id
        LEFT JOIN pub           ON pub.restaurant_id   = res.id
        LEFT JOIN latest        ON latest.restaurant_id = res.id
+       LEFT JOIN reviews lrv   ON lrv.id              = latest.review_id
        LEFT JOIN cover         ON cover.review_id     = latest.review_id
        WHERE res.cuisine = ? AND res.id <> ?
        ORDER BY
@@ -762,6 +768,8 @@ export async function getSimilarByCuisine(
     location: (r.location as string | null) ?? null,
     price_tier: (r.price_tier as number | null) ?? null,
     wishlist_note: (r.wishlist_note as string | null) ?? null,
+    card_quote: (r.card_quote as string | null) ?? null,
+    latest_commentary: (r.latest_commentary as string | null) ?? null,
     visited: r.visited === 1,
     review_count: (r.review_count as number) ?? 0,
     avg_overall: (r.avg_overall as number | null) ?? null,
@@ -811,7 +819,7 @@ export async function getFeaturedRecent(
     )
     SELECT
       res.id, res.slug, res.name, res.cuisine, res.price_tier, res.wishlist_note,
-      res.hero_photo_name, res.lat, res.lng,
+      res.card_quote, res.hero_photo_name, res.lat, res.lng,
       loc.name AS location,
       pub.review_count,
       pub.avg_overall,
@@ -861,6 +869,8 @@ export async function getFeaturedRecent(
     location: (r.location as string | null) ?? null,
     price_tier: (r.price_tier as number | null) ?? null,
     wishlist_note: (r.wishlist_note as string | null) ?? null,
+    card_quote: (r.card_quote as string | null) ?? null,
+    latest_commentary: (r.commentary as string | null) ?? null,
     visited: true,
     review_count: (r.review_count as number) ?? 0,
     avg_overall: (r.avg_overall as number | null) ?? null,
@@ -903,6 +913,8 @@ export async function getWishlistPreview(
     location: (r.location as string | null) ?? null,
     price_tier: (r.price_tier as number | null) ?? null,
     wishlist_note: (r.wishlist_note as string | null) ?? null,
+    card_quote: null,
+    latest_commentary: null,
     visited: false,
     review_count: 0,
     avg_overall: null,
@@ -947,7 +959,7 @@ export async function getRestaurantForEdit(
   const row = await db
     .prepare(
       `SELECT id, slug, name, cuisine, location_id, address, price_tier,
-              website_url, maps_url, place_id, lat, lng, wishlist_note
+              website_url, maps_url, place_id, lat, lng, wishlist_note, card_quote
        FROM restaurants WHERE id = ?`
     )
     .bind(id)
@@ -992,6 +1004,7 @@ export interface RestaurantInput {
   lat: number | null;
   lng: number | null;
   wishlist_note: string | null;
+  card_quote: string | null;
   tag_ids: number[];
   meal_types: MealType[];
 }
@@ -1055,8 +1068,8 @@ export async function createRestaurant(db: D1Database, data: RestaurantInput): P
     .prepare(
       `INSERT INTO restaurants
        (slug, name, cuisine, location_id, address, price_tier,
-        website_url, maps_url, place_id, lat, lng, wishlist_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        website_url, maps_url, place_id, lat, lng, wishlist_note, card_quote)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       data.slug,
@@ -1070,7 +1083,8 @@ export async function createRestaurant(db: D1Database, data: RestaurantInput): P
       data.place_id,
       data.lat,
       data.lng,
-      data.wishlist_note
+      data.wishlist_note,
+      data.card_quote
     )
     .run();
   const id = Number(res.meta.last_row_id);
@@ -1092,7 +1106,7 @@ export async function updateRestaurant(
       `UPDATE restaurants SET
          slug = ?, name = ?, cuisine = ?, location_id = ?, address = ?,
          price_tier = ?, website_url = ?, maps_url = ?, place_id = ?, lat = ?, lng = ?,
-         wishlist_note = ?, updated_at = unixepoch()
+         wishlist_note = ?, card_quote = ?, updated_at = unixepoch()
        WHERE id = ?`
     )
     .bind(
@@ -1108,6 +1122,7 @@ export async function updateRestaurant(
       data.lat,
       data.lng,
       data.wishlist_note,
+      data.card_quote,
       id
     )
     .run();

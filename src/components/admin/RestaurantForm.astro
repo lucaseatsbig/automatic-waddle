@@ -114,6 +114,11 @@ const currentLocationName = r?.location_id
     <input type="hidden" name="lng" id="rf-lng" value={r?.lng ?? ''} />
 
     <label class="field span-2">
+      <span>One-liner <em>(your verdict — shown on cards once visited)</em></span>
+      <input type="text" name="card_quote" maxlength="140" value={r?.card_quote ?? ''} placeholder="The vibe of your score in one line" />
+    </label>
+
+    <label class="field span-2">
       <span>Wishlist note <em>(only shown if no review)</em></span>
       <textarea name="wishlist_note" placeholder="What you've heard or want to try">{r?.wishlist_note ?? ''}</textarea>
     </label>
