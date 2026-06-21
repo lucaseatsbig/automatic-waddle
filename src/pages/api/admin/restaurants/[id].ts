@@ -27,6 +27,7 @@ export const POST: APIRoute = async ({ params, request, redirect }) => {
     lat: parsed.lat,
     lng: parsed.lng,
     wishlist_note: parsed.wishlist_note,
+    card_quote: parsed.card_quote,
     tag_ids: parsed.tag_ids,
     meal_types: parsed.meal_types,
   });

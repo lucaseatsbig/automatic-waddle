@@ -284,11 +284,104 @@ const initialVisibleJson = JSON.stringify([...initialIdSet]).replace(/</g, '\\u0
     });
     mapRef = map;
 
-    const infoWindow = new maps.InfoWindow({ maxWidth: 280 });
+    // disableAutoPan: we run our own pan-into-view (panMarkerIntoView) so the
+    // card gets equal padding on every edge. Google's built-in auto-pan only
+    // nudges the card when it spills off an edge — since the card opens upward,
+    // bottom markers never trigger it and the card hugs the bottom edge.
+    const infoWindow = new maps.InfoWindow({ maxWidth: 280, disableAutoPan: true });
+
+    // Desktop pointers (real mouse + hover capability) get hover-to-open;
+    // touch devices fall through to the click listener below. We check the
+    // media query rather than sniffing UA so hybrid devices behave sensibly.
+    const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+    // Hover-intent state. The popup card is interactive (links to the detail
+    // page + "Open in Maps"), so we can't close the instant the cursor leaves
+    // the pin — the user needs to be able to travel from pin → card. We track
+    // which marker is open and run a short close timer that any of the pin or
+    // the card can cancel, so moving across the small gap doesn't dismiss it.
+    let openMarkerId: number | null = null;
+    let closeTimer: number | null = null;
+    // While a programmatic pan-into-view is animating it slides the marker out
+    // from under a stationary cursor, firing a spurious 'mouseout'. Ignore
+    // mouseouts until this timestamp so the pan doesn't close its own popup.
+    let panSettleUntil = 0;
+    const cancelClose = () => {
+      if (closeTimer !== null) { clearTimeout(closeTimer); closeTimer = null; }
+    };
+
+    // Pan the map so the open card clears every edge by `pad` px. The card
+    // opens upward from the marker, so its top sits ~cardH above the pin and
+    // its width is centred on the pin. We derive the marker's pixel position
+    // from the current bounds (linear in lng; lat is near-linear at city zoom,
+    // so the few-px error is well within the padding) and panBy the overflow.
+    const panMarkerIntoView = (marker: any) => {
+      const bounds = map.getBounds();
+      const host = document.getElementById('lucaseats-gmap');
+      if (!bounds || !host) return;
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      const lngSpan = ne.lng() - sw.lng();
+      const latSpan = ne.lat() - sw.lat();
+      if (lngSpan <= 0 || latSpan <= 0) return;
+      const pos = marker.getPosition();
+      const px = ((pos.lng() - sw.lng()) / lngSpan) * w;
+      const py = ((ne.lat() - pos.lat()) / latSpan) * h;
+
+      const isMobile = window.matchMedia('(max-width: 600px)').matches;
+      const cardH = isMobile ? 250 : 300; // photo + body + button + anchor tail
+      const cardW = isMobile ? 196 : 232; // matches .popup-card width
+      const pad = 16;
+      const half = cardW / 2;
+
+      let dx = 0;
+      let dy = 0;
+      const cardTop = py - cardH;
+      if (cardTop < pad) dy = cardTop - pad;        // card overflows top → content down
+      else if (py > h - pad) dy = py - (h - pad);   // pin hugs bottom → content up
+      if (px - half < pad) dx = px - half - pad;    // card overflows left
+      else if (px + half > w - pad) dx = px + half - (w - pad); // overflows right
+
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        map.panBy(Math.round(dx), Math.round(dy));
+        panSettleUntil = Date.now() + 450;
+      }
+    };
+    const closePopup = () => {
+      cancelClose();
+      infoWindow.close();
+      openMarkerId = null;
+    };
+    const scheduleClose = () => {
+      cancelClose();
+      closeTimer = window.setTimeout(closePopup, 220);
+    };
+    const openPopup = (item: MapItem, marker: any) => {
+      cancelClose();
+      if (openMarkerId === item.id) return; // already showing this one — no flicker
+      openMarkerId = item.id;
+      infoWindow.setContent(buildPopupHtml(item));
+      infoWindow.open({ map, anchor: marker });
+      panMarkerIntoView(marker);
+    };
+
+    // Keep the popup open while the cursor is over the card itself. The IW
+    // DOM container is recreated on every open, so we re-bind on each domready
+    // (the discarded element takes its listeners with it — no leak).
+    infoWindow.addListener('domready', () => {
+      if (!canHover) return;
+      const iw = document.querySelector('.gm-style-iw');
+      if (!iw) return;
+      iw.addEventListener('mouseenter', cancelClose);
+      iw.addEventListener('mouseleave', scheduleClose);
+    });
+
     // Expose a global close-handler so our custom X button (rendered inside
     // the popup HTML) can dismiss the InfoWindow without us having to
     // re-attach a listener after every setContent call.
-    (window as any).__lucaseatsClosePopup = () => infoWindow.close();
+    (window as any).__lucaseatsClosePopup = closePopup;
 
     // Read the initial visible-id set. If the page-level filter engine
     // already pushed an updated set via updateMarkers() before init ran
@@ -320,10 +413,19 @@ const initialVisibleJson = JSON.stringify([...initialIdSet]).replace(/</g, '\\u0
         icon: markerIcon(maps, item.visited),
         optimized: true,
       });
-      marker.addListener('click', () => {
-        infoWindow.setContent(buildPopupHtml(item));
-        infoWindow.open({ map, anchor: marker });
-      });
+      // Click works everywhere (the primary interaction on touch). On hover-
+      // capable pointers we also open on mouseover and close — after a short
+      // grace period — on mouseout, so the cursor can travel onto the card.
+      marker.addListener('click', () => openPopup(item, marker));
+      if (canHover) {
+        marker.addListener('mouseover', () => openPopup(item, marker));
+        marker.addListener('mouseout', () => {
+          // Suppress the spurious mouseout caused by pan-into-view sliding the
+          // marker out from under the cursor; a real move-away closes normally.
+          if (Date.now() < panSettleUntil) return;
+          scheduleClose();
+        });
+      }
       markersById.set(item.id, marker);
       if (isVisible) bounds.extend({ lat: item.lat, lng: item.lng });
     }
