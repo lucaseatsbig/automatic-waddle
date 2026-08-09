@@ -1,6 +1,7 @@
 ---
 import type { Filters, Location, Tag } from '../lib/types';
 import { REGIONS, type Region } from '../lib/regions';
+import { ALL_FACETS_AVAILABLE, TOP_RATED_THRESHOLD, type AvailableFacets } from '../lib/facets';
 
 interface Props {
   filters: Filters;
@@ -8,6 +9,11 @@ interface Props {
   regions?: Region[];
   tags: Tag[];
   cuisines: string[];
+  /**
+   * Which options have at least one restaurant behind them — see the same
+   * prop on FilterBar. Anything omitted is treated as available.
+   */
+  available?: Pick<AvailableFacets, 'priceTiers' | 'visited' | 'wishlist' | 'topRated'>;
   count?: number;
   /**
    * Current view mode on /all. Threaded through the sheet's forms and
@@ -15,22 +21,39 @@ interface Props {
    */
   view?: 'list' | 'map';
 }
-const { filters, locations, regions = REGIONS, tags, cuisines, count = 0, view = 'list' } = Astro.props;
+const {
+  filters,
+  locations,
+  regions = REGIONS,
+  tags,
+  cuisines,
+  available = ALL_FACETS_AVAILABLE,
+  count = 0,
+  view = 'list',
+} = Astro.props;
 const clearAllHref = view === 'map' ? '/all?view=map' : '/all';
 
 const vibes = tags.filter((t) => t.category === 'vibe');
-const TOP_RATED_THRESHOLD = 7;
 const topRated = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
 
 // Mirrors the canonical ranges in src/components/admin/RestaurantForm.astro
 // and UnifiedEntryForm.astro — keep these in sync with the admin entry form.
+// Only tiers someone is actually priced at get rendered.
 const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
   { tier: 1, symbol: '$',     range: '$0–20'   },
   { tier: 2, symbol: '$$',    range: '$20–50'  },
   { tier: 3, symbol: '$$$',   range: '$50–100' },
   { tier: 4, symbol: '$$$$',  range: '$100–200'},
   { tier: 5, symbol: '$$$$$', range: '$200+'   },
+].filter((p) => available.priceTiers.includes(p.tier));
+
+// Status only earns its row when both sides exist — see FilterBar.
+const STATUS_OPTIONS = [
+  { value: '', label: 'All' },
+  ...(available.visited ? [{ value: 'yes', label: 'Visited' }] : []),
+  ...(available.wishlist ? [{ value: 'no', label: 'On the list' }] : []),
 ];
+const showStatus = STATUS_OPTIONS.length > 2;
 
 const sort = filters.sort ?? 'name';
 
@@ -236,6 +259,7 @@ for (const slug of filters.vibes ?? []) {
       </div>
 
       <!-- Top rated -->
+      {available.topRated && (
       <div class="mfs-group">
         <div class="mfs-legend">Rating</div>
         <input type="hidden" name="minRating" value={topRated ? String(TOP_RATED_THRESHOLD) : ''} data-mfs-toprated-input />
@@ -249,16 +273,14 @@ for (const slug of filters.vibes ?? []) {
           <span>Top rated only ({TOP_RATED_THRESHOLD}+)</span>
         </button>
       </div>
+      )}
 
       <!-- Status: All / Visited / On the list -->
+      {showStatus && (
       <div class="mfs-group">
         <div class="mfs-legend">Status</div>
         <div class="mfs-segments">
-          {[
-            { value: '', label: 'All' },
-            { value: 'yes', label: 'Visited' },
-            { value: 'no', label: 'On the list' },
-          ].map((opt) => (
+          {STATUS_OPTIONS.map((opt) => (
             <label class:list={['mfs-seg', { on: (filters.visited ?? '') === opt.value }]}>
               <input type="radio" name="visited" value={opt.value} checked={(filters.visited ?? '') === opt.value} />
               <span>{opt.label}</span>
@@ -266,6 +288,7 @@ for (const slug of filters.vibes ?? []) {
           ))}
         </div>
       </div>
+      )}
 
       <!-- Cuisine — multi-select checkbox pills -->
       {cuisines.length > 0 && (
@@ -283,9 +306,10 @@ for (const slug of filters.vibes ?? []) {
       )}
 
       <!-- Location — multi-select checkbox pills (regions and suburbs) -->
+      {locations.length + regions.length > 0 && (
       <div class="mfs-group">
         <div class="mfs-legend">Location</div>
-        <div class="mfs-sub-label">Regions</div>
+        {regions.length > 0 && <div class="mfs-sub-label">Regions</div>}
         <div class="mfs-pills">
           {regions.map((r) => (
             <label class:list={['mfs-pill', { on: selectedRegions.includes(r.slug) }]}>
@@ -294,7 +318,7 @@ for (const slug of filters.vibes ?? []) {
             </label>
           ))}
         </div>
-        <div class="mfs-sub-label">Suburbs</div>
+        {locations.length > 0 && <div class="mfs-sub-label">Suburbs</div>}
         <div class="mfs-pills">
           {locations.map((l) => (
             <label class:list={['mfs-pill', { on: selectedSuburbs.includes(l.slug) }]}>
@@ -304,8 +328,10 @@ for (const slug of filters.vibes ?? []) {
           ))}
         </div>
       </div>
+      )}
 
       <!-- Price -->
+      {PRICE_TIERS.length > 0 && (
       <div class="mfs-group">
         <div class="mfs-legend">Price</div>
         <div class="mfs-pills">
@@ -318,6 +344,7 @@ for (const slug of filters.vibes ?? []) {
           ))}
         </div>
       </div>
+      )}
 
       <!-- Vibe -->
       {vibes.length > 0 && (

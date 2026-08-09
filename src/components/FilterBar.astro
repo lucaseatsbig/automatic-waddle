@@ -1,6 +1,7 @@
 ---
 import type { Filters, Location, Tag } from '../lib/types';
 import { REGIONS, type Region } from '../lib/regions';
+import { ALL_FACETS_AVAILABLE, TOP_RATED_THRESHOLD, type AvailableFacets } from '../lib/facets';
 
 interface Props {
   filters: Filters;
@@ -9,12 +10,28 @@ interface Props {
   tags: Tag[];
   cuisines: string[];
   /**
+   * Which options have at least one restaurant behind them. Everything the
+   * caller leaves out is treated as available. The list props above
+   * (locations/regions/tags/cuisines) are expected to be pre-narrowed by
+   * buildAvailableFacets; this covers the fixed option sets (price tiers,
+   * status, top-rated) that aren't passed as lists.
+   */
+  available?: Pick<AvailableFacets, 'priceTiers' | 'visited' | 'wishlist' | 'topRated'>;
+  /**
    * Current view mode on /all. When "map", a hidden `view` input is added so
    * form submissions preserve the map view instead of falling back to list.
    */
   view?: 'list' | 'map';
 }
-const { filters, locations, regions = REGIONS, tags, cuisines, view = 'list' } = Astro.props;
+const {
+  filters,
+  locations,
+  regions = REGIONS,
+  tags,
+  cuisines,
+  available = ALL_FACETS_AVAILABLE,
+  view = 'list',
+} = Astro.props;
 // `view` prop kept on the interface so the page can pass it down for parity
 // with MobileFilterSheet, even though desktop no longer needs to thread it
 // into form state — every change goes through URL replaceState now.
@@ -30,18 +47,31 @@ const sortLabels: Record<string, string> = {
   name: 'A→Z',
 };
 
-const TOP_RATED_THRESHOLD = 7;
 const topRated = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
 
 // Mirrors the canonical ranges in src/components/admin/RestaurantForm.astro
 // and UnifiedEntryForm.astro — keep these in sync with the admin entry form.
+// Only tiers someone is actually priced at get rendered.
 const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
   { tier: 1, symbol: '$', range: '$0–20' },
   { tier: 2, symbol: '$$', range: '$20–50' },
   { tier: 3, symbol: '$$$', range: '$50–100' },
   { tier: 4, symbol: '$$$$', range: '$100–200' },
   { tier: 5, symbol: '$$$$$', range: '$200+' },
+].filter((p) => available.priceTiers.includes(p.tier));
+
+// Status is only worth offering when both sides of it exist — if every place
+// is visited, "Visited" is a no-op and "On the list" is an empty list.
+const statusOptions = [
+  { value: '', label: 'All' },
+  ...(available.visited ? [{ value: 'yes', label: 'Visited' }] : []),
+  ...(available.wishlist ? [{ value: 'no', label: 'On the list' }] : []),
 ];
+const showStatus = statusOptions.length > 2;
+
+// A cuisine/location pill with an empty panel is just a dead dropdown.
+const showCuisinePill = cuisines.length > 0;
+const showLocationPill = locations.length + regions.length > 0;
 
 // Cuisine and Location pills are multi-select. The pill's display label
 // shows "Any" / "Anywhere" when nothing's picked, the single value when
@@ -154,6 +184,7 @@ void TAG_CHIP_LIMIT;
           </svg>
         </button>
       </div>
+      {showCuisinePill && (
       <div class="pill-select" data-name="cuisine" data-multi>
         <button type="button" class:list={['pill', { on: selectedCuisines.length > 0 }]} data-pill-trigger>
           <span class="meta">Cuisine</span>
@@ -180,7 +211,9 @@ void TAG_CHIP_LIMIT;
           ))}
         </div>
       </div>
+      )}
 
+      {showLocationPill && (
       <div class="pill-select" data-name="location" data-multi>
         <button type="button" class:list={['pill', { on: totalLocations > 0 }]} data-pill-trigger>
           <span class="meta">Location</span>
@@ -193,7 +226,7 @@ void TAG_CHIP_LIMIT;
         </button>
         <div class="panel" hidden>
           <button type="button" class="opt opt-clear" data-clear-this hidden={totalLocations === 0}>Clear all</button>
-          <div class="opt-group-label">Regions</div>
+          {regions.length > 0 && <div class="opt-group-label">Regions</div>}
           {regions.map((r) => (
             <button
               type="button"
@@ -206,7 +239,7 @@ void TAG_CHIP_LIMIT;
               <span>{r.name}</span>
             </button>
           ))}
-          <div class="opt-group-label">Suburbs</div>
+          {locations.length > 0 && <div class="opt-group-label">Suburbs</div>}
           {locations.map((l) => (
             <button
               type="button"
@@ -221,7 +254,9 @@ void TAG_CHIP_LIMIT;
           ))}
         </div>
       </div>
+      )}
 
+      {showStatus && (
       <div class="pill-select" data-name="visited">
         <button type="button" class:list={['pill', { on: !!visitedKey }]} data-pill-trigger>
           <span class="meta">Status</span>
@@ -233,11 +268,12 @@ void TAG_CHIP_LIMIT;
           </span>
         </button>
         <div class="panel" hidden>
-          <button type="button" class:list={['opt', { on: visitedKey === '' }]} data-value="">All</button>
-          <button type="button" class:list={['opt', { on: visitedKey === 'yes' }]} data-value="yes">Visited</button>
-          <button type="button" class:list={['opt', { on: visitedKey === 'no' }]} data-value="no">On the list</button>
+          {statusOptions.map((opt) => (
+            <button type="button" class:list={['opt', { on: visitedKey === opt.value }]} data-value={opt.value}>{opt.label}</button>
+          ))}
         </div>
       </div>
+      )}
 
       <div class="pill-select" data-name="sort">
         <input type="hidden" name="sort" value={sort === 'name' ? '' : sort} />
@@ -257,6 +293,7 @@ void TAG_CHIP_LIMIT;
         </div>
       </div>
 
+      {available.topRated && (
       <div class="toggle-wrap">
         <input type="hidden" name="minRating" value={topRated ? String(TOP_RATED_THRESHOLD) : ''} />
         <button
@@ -269,9 +306,11 @@ void TAG_CHIP_LIMIT;
           Top rated ({TOP_RATED_THRESHOLD}+)
         </button>
       </div>
+      )}
     </div>
 
     {/* Row 2: price chips */}
+    {PRICE_TIERS.length > 0 && (
     <div class="chip-row">
       <span class="row-label">Price</span>
       {PRICE_TIERS.map((p) => (
@@ -287,6 +326,7 @@ void TAG_CHIP_LIMIT;
         </label>
       ))}
     </div>
+    )}
 
     {/* Row 3: vibe chips on their own row */}
     {vibes.length > 0 && (

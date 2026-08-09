@@ -13,6 +13,13 @@ export interface SmartParseRefData {
   regions: { slug: string; name: string }[];
   locations: { slug: string; name: string }[];
   tags: { slug: string; label: string; category?: string }[];
+  /** Meal types with at least one place behind them. When present, meal
+   *  phrases outside this list aren't indexed — the parser must never apply
+   *  a filter that can only return nothing. Omit to allow every meal. */
+  meals?: string[];
+  /** Price tiers in use, same rule as `meals`. A cue like "splurge" is
+   *  narrowed to the tiers that exist, and dropped if none do. */
+  priceTiers?: number[];
 }
 
 export interface SmartParseResult {
@@ -311,15 +318,24 @@ function buildPhraseIndex(ref: SmartParseRefData): Phrase[] {
     }
   }
 
-  // Meal-type phrases — see MEAL_PHRASES comment.
+  // Meal-type phrases — see MEAL_PHRASES comment. Skipped when the meal
+  // isn't served anywhere, so "brunch" stays free text instead of applying
+  // a filter that empties the list.
+  const mealsInUse = ref.meals ? new Set(ref.meals) : null;
   for (const [phrase, mealSlug] of Object.entries(MEAL_PHRASES)) {
+    if (mealsInUse && !mealsInUse.has(mealSlug)) continue;
     phrases.push({ phrase: normalize(phrase), type: 'meal', value: mealSlug });
   }
 
   // Price cues — normalise the synonym keys; values are encoded as a
-  // comma-joined tier list so the Phrase shape stays a flat string.
+  // comma-joined tier list so the Phrase shape stays a flat string. Tiers
+  // nothing is priced at are dropped from the cue; a cue left with no tiers
+  // isn't indexed at all.
+  const tiersInUse = ref.priceTiers ? new Set(ref.priceTiers) : null;
   for (const [phrase, tiers] of Object.entries(PRICE_SYNONYMS)) {
-    phrases.push({ phrase: normalize(phrase), type: 'price', value: tiers.join(',') });
+    const usable = tiersInUse ? tiers.filter((t) => tiersInUse.has(t)) : tiers;
+    if (usable.length === 0) continue;
+    phrases.push({ phrase: normalize(phrase), type: 'price', value: usable.join(',') });
   }
 
   // Dedupe (same phrase + type + value can be added by both label-pass

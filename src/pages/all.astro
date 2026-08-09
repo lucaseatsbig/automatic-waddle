@@ -10,6 +10,7 @@ import PageHead from '../components/PageHead.astro';
 import { getCuisines, getLocationsInUse, getTags, getRestaurantsForClientFilter } from '../lib/db';
 import { REGIONS } from '../lib/regions';
 import { matchesFilter, compareSort, parseFiltersFromUrl } from '../lib/filter';
+import { buildAvailableFacets } from '../lib/facets';
 import type { Filters } from '../lib/types';
 
 const sp = Astro.url.searchParams;
@@ -24,12 +25,22 @@ const filters: Filters = parseFiltersFromUrl(sp);
 const view = sp.get('view') === 'map' ? 'map' : 'list';
 const clearAllHref = view === 'map' ? '/all?view=map' : '/all';
 
-const [allRestaurants, locations, tags, cuisines] = await Promise.all([
+const [allRestaurants, allLocations, allTags, allCuisines] = await Promise.all([
   getRestaurantsForClientFilter(env.DB),
   getLocationsInUse(env.DB),
   getTags(env.DB),
   getCuisines(env.DB),
 ]);
+
+// Drop every filter option nothing is tagged with — a vibe with no places
+// behind it is a button that can only ever empty the list. See lib/facets.ts
+// for the rules (computed on the full set; current selections always kept).
+const facets = buildAvailableFacets(
+  allRestaurants,
+  { cuisines: allCuisines, locations: allLocations, tags: allTags, regions: REGIONS },
+  filters
+);
+const { cuisines, locations, tags, regions } = facets;
 
 // Server-side first-paint: which restaurants match the URL filters? The
 // matching set drives the initial visible cards, the count, and the map's
@@ -49,9 +60,6 @@ const sortedVisible = allRestaurants
   .sort((a, b) => compareSort(a, b, filters.sort));
 const hidden = allRestaurants.filter((r) => !visibleIds.has(r.id));
 const orderedForRender = [...sortedVisible, ...hidden];
-
-const inUseSuburbSlugs = new Set(locations.map((l) => l.slug));
-const regions = REGIONS.filter((r) => r.suburbs.some((s) => inUseSuburbSlugs.has(s)));
 
 const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
 const googleMapsKey = env.GOOGLE_MAPS_API_KEY ?? '';
@@ -82,11 +90,16 @@ const clientData = allRestaurants.map((r) => ({
   review_count: r.review_count,
 }));
 
+// Narrowed lists, not the raw reference tables — smart-search parses against
+// these, so typing "live music" can't apply a filter the filter bar itself
+// refuses to offer.
 const clientReferenceData = {
-  regions: REGIONS.map((r) => ({ slug: r.slug, name: r.name, suburbs: r.suburbs })),
+  regions: regions.map((r) => ({ slug: r.slug, name: r.name, suburbs: r.suburbs })),
   locations: locations.map((l) => ({ slug: l.slug, name: l.name })),
   tags: tags.map((t) => ({ slug: t.slug, label: t.label, category: t.category })),
   cuisines,
+  meals: facets.meals,
+  priceTiers: facets.priceTiers,
 };
 
 // Stringify-and-escape so a `</script>` in the data can't break out of
@@ -102,9 +115,9 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
   </PageHead>
 
   <div class="filterbar-desktop">
-    <FilterBar filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} view={view} />
+    <FilterBar filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} available={facets} view={view} />
   </div>
-  <MobileFilterSheet filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} count={visibleIds.size} view={view} />
+  <MobileFilterSheet filters={filters} locations={locations} regions={regions} tags={tags} cuisines={cuisines} available={facets} count={visibleIds.size} view={view} />
 
   <section class="results" data-view={view} data-empty-results={visibleIds.size === 0 ? 'true' : 'false'}>
     <div class="results-head">
