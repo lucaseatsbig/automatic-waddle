@@ -208,7 +208,8 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
       }
     }
 
-    const TOP_RATED_THRESHOLD = 7;
+    // Mirrors TOP_RATED_THRESHOLD in src/lib/facets.ts — keep in sync.
+    const TOP_RATED_THRESHOLD = 8;
     const PRICE_SYMBOLS: Record<number, string> = { 1: '$', 2: '$$', 3: '$$$', 4: '$$$$', 5: '$$$$$' };
 
     function readDataIslands(): { data: ClientRestaurant[]; ref: ReferenceData } | null {

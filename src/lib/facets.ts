@@ -23,8 +23,10 @@ import { REGIONS, type Region } from './regions';
 import type { Filters, Location, Tag } from './types';
 
 /** Rating floor behind the "Top rated" toggle. Canonical — the filter UI
- *  imports this rather than re-declaring it. */
-export const TOP_RATED_THRESHOLD = 7;
+ *  imports this rather than re-declaring it. NOTE: the client-side script in
+ *  src/pages/all.astro re-declares this value (it can't import from here);
+ *  change both together or server and client filtering disagree. */
+export const TOP_RATED_THRESHOLD = 8;
 
 export interface AvailableFacets {
   /** Reference lists, narrowed to values in use (plus current selections). */
