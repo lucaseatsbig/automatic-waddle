@@ -453,16 +453,8 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
         opt.classList.toggle('on', matches);
       });
 
-      // Status (visited)
-      const visitedKey = filters.visited ?? '';
-      const visitedLabels: Record<string, string> = { '': 'All', yes: 'Visited', no: 'On the list' };
-      const vl = labelOf('[data-name="visited"]');
-      if (vl) vl.textContent = visitedLabels[visitedKey];
-      pillOf('[data-name="visited"]')?.classList.toggle('on', !!visitedKey);
-      bar.querySelectorAll<HTMLElement>('[data-name="visited"] .opt').forEach((opt) => {
-        const v = opt.dataset.value ?? '';
-        opt.classList.toggle('on', v === visitedKey);
-      });
+      // No Status pill to sync — the control was removed; the ?visited= param
+      // still round-trips and is cleared via its chip in the Applied row.
 
       // Top-rated
       const topRated = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
@@ -526,7 +518,6 @@ const refJson = JSON.stringify(clientReferenceData).replace(/</g, '\\u003c');
 
       const sortValue = filters.sort && filters.sort !== 'name' ? filters.sort : '';
       setRadio('sort', sortValue);
-      setRadio('visited', filters.visited ?? '');
 
       // Outer sort-cycle anchor — update its visible label so tapping it
       // shows the new sort immediately. Also marks the wrapper "on" when

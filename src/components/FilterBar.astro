@@ -60,14 +60,12 @@ const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
   { tier: 5, symbol: '$$$$$', range: '$200+' },
 ].filter((p) => available.priceTiers.includes(p.tier));
 
-// Status is only worth offering when both sides of it exist — if every place
-// is visited, "Visited" is a no-op and "On the list" is an empty list.
-const statusOptions = [
-  { value: '', label: 'All' },
-  ...(available.visited ? [{ value: 'yes', label: 'Visited' }] : []),
-  ...(available.wishlist ? [{ value: 'no', label: 'On the list' }] : []),
-];
-const showStatus = statusOptions.length > 2;
+// There's deliberately no Status control any more — "Visited / On the list"
+// read as jargon, and wishlist places now sort below visited ones in every
+// sort, which is what people actually wanted from it. The `visited` URL param
+// still works (the home page links to ?visited=no), so `visitedKey` below
+// keeps feeding anyFilterActive — that's what surfaces "Clear all" for anyone
+// who arrives on a filtered URL and wants out of it.
 
 // A cuisine/location pill with an empty panel is just a dead dropdown.
 const showCuisinePill = cuisines.length > 0;
@@ -100,13 +98,9 @@ const locationLabel = (() => {
   return `${totalLocations} selected`;
 })();
 
-const visitedLabels: Record<string, string> = {
-  '': 'All',
-  yes: 'Visited',
-  no: 'On the list',
-};
+// No longer rendered as a pill — kept only so anyFilterActive can offer
+// "Clear all" to anyone who lands on a ?visited= URL.
 const visitedKey = filters.visited ?? '';
-const visitedLabel = visitedLabels[visitedKey] ?? 'All';
 
 const TAG_CHIP_LIMIT = 999; // no truncation
 
@@ -251,25 +245,6 @@ void TAG_CHIP_LIMIT;
               <span class="opt-tick" aria-hidden="true">✓</span>
               <span>{l.name}</span>
             </button>
-          ))}
-        </div>
-      </div>
-      )}
-
-      {showStatus && (
-      <div class="pill-select" data-name="visited">
-        <button type="button" class:list={['pill', { on: !!visitedKey }]} data-pill-trigger>
-          <span class="meta">Status</span>
-          <span class="label" data-pill-label>{visitedLabel}</span>
-          <span class="caret" aria-hidden="true">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </span>
-        </button>
-        <div class="panel" hidden>
-          {statusOptions.map((opt) => (
-            <button type="button" class:list={['opt', { on: visitedKey === opt.value }]} data-value={opt.value}>{opt.label}</button>
           ))}
         </div>
       </div>

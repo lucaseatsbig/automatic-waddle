@@ -119,12 +119,17 @@ export function matchesFilter(r: FilterableRestaurant, f: Filters): boolean {
 }
 
 export function compareSort(a: FilterableRestaurant, b: FilterableRestaurant, sort: SortOption | undefined): number {
+  // Visited places always rank above wishlist ones, whatever the sort — a
+  // wishlist entry has no rating and no visit date, so interleaving them
+  // buries the places actually worth reading about. Mirrors the VISITED_FIRST
+  // clause in searchRestaurants() (src/lib/db.ts); change both together.
+  const av = a.visited ? 0 : 1;
+  const bv = b.visited ? 0 : 1;
+  if (av !== bv) return av - bv;
+
   switch (sort) {
     case 'recent': {
-      // Visited (have reviews) first, then by latest visit desc, then name asc.
-      const av = a.visited ? 0 : 1;
-      const bv = b.visited ? 0 : 1;
-      if (av !== bv) return av - bv;
+      // Latest visit desc, then name asc.
       const ad = a.latest_visit_date ?? '';
       const bd = b.latest_visit_date ?? '';
       if (ad !== bd) return ad < bd ? 1 : -1; // desc

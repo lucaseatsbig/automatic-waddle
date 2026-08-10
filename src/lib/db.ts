@@ -411,21 +411,24 @@ export async function searchRestaurants(
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
+  // Visited places always rank above wishlist ones, whatever the sort. A
+  // wishlist entry has no rating and no visit date, so interleaving them
+  // buries the places actually worth reading about. Keep this in lockstep
+  // with compareSort() in src/lib/filter.ts, which sorts the same list
+  // client-side after a filter change.
+  const VISITED_FIRST = `CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 0 ELSE 1 END`;
+
   let orderBy: string;
   switch (f.sort) {
     case 'recent':
-      orderBy = `
-        CASE WHEN COALESCE(pub.review_count, 0) > 0 THEN 0 ELSE 1 END,
-        latest_meta.visit_date DESC,
-        res.name ASC
-      `;
+      orderBy = `${VISITED_FIRST}, latest_meta.visit_date DESC, res.name ASC`;
       break;
     case 'rating':
-      orderBy = `pub.avg_overall DESC NULLS LAST, latest_meta.visit_date DESC, res.name ASC`;
+      orderBy = `${VISITED_FIRST}, pub.avg_overall DESC NULLS LAST, latest_meta.visit_date DESC, res.name ASC`;
       break;
     case 'name':
     default:
-      orderBy = `res.name ASC`;
+      orderBy = `${VISITED_FIRST}, res.name ASC`;
   }
 
   const sql = `

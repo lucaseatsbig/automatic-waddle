@@ -38,9 +38,14 @@ export interface AvailableFacets {
    *  meal filter is reachable only through smart-search ("lunch cbd") — but
    *  the parser uses it so a phrase can't apply an empty meal filter. */
   meals: string[];
-  /** Is there at least one visited place? Drives the Status → "Visited" option. */
+  /**
+   * Is there at least one visited place? Previously drove the Status filter's
+   * "Visited" option; no consumer reads it since that control was removed
+   * (wishlist places now sort last in every sort instead). Kept because it's
+   * cheap and a future "hide wishlist" toggle would want it.
+   */
   visited: boolean;
-  /** Is there at least one not-yet-visited place? Status → "On the list". */
+  /** Is there at least one not-yet-visited place? Unused — see `visited`. */
   wishlist: boolean;
   /** Any place rated TOP_RATED_THRESHOLD or above? Drives the Top rated toggle. */
   topRated: boolean;

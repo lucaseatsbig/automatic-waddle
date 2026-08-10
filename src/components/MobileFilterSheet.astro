@@ -47,13 +47,9 @@ const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
   { tier: 5, symbol: '$$$$$', range: '$200+'   },
 ].filter((p) => available.priceTiers.includes(p.tier));
 
-// Status only earns its row when both sides exist — see FilterBar.
-const STATUS_OPTIONS = [
-  { value: '', label: 'All' },
-  ...(available.visited ? [{ value: 'yes', label: 'Visited' }] : []),
-  ...(available.wishlist ? [{ value: 'no', label: 'On the list' }] : []),
-];
-const showStatus = STATUS_OPTIONS.length > 2;
+// No Status row any more — see the note in FilterBar.astro. The `visited`
+// param still round-trips; the activeChips entry below is now the only way
+// to clear it, which is why it stays.
 
 const sort = filters.sort ?? 'name';
 
@@ -272,21 +268,6 @@ for (const slug of filters.vibes ?? []) {
           <span class="check" aria-hidden="true">{topRated ? '✓' : ''}</span>
           <span>Top rated only ({TOP_RATED_THRESHOLD}+)</span>
         </button>
-      </div>
-      )}
-
-      <!-- Status: All / Visited / On the list -->
-      {showStatus && (
-      <div class="mfs-group">
-        <div class="mfs-legend">Status</div>
-        <div class="mfs-segments">
-          {STATUS_OPTIONS.map((opt) => (
-            <label class:list={['mfs-seg', { on: (filters.visited ?? '') === opt.value }]}>
-              <input type="radio" name="visited" value={opt.value} checked={(filters.visited ?? '') === opt.value} />
-              <span>{opt.label}</span>
-            </label>
-          ))}
-        </div>
       </div>
       )}
 
@@ -621,7 +602,11 @@ for (const slug of filters.vibes ?? []) {
     const url = new URL(window.location.href);
     // Preserve view + q (managed by the outer bar) and clear/repopulate
     // every param the sheet controls.
-    const sheetManagedNames = ['cuisine', 'location', 'price', 'vibes', 'minRating', 'sort', 'visited'];
+    // 'visited' is deliberately absent: the sheet no longer has a control for
+    // it, and these names get deleted then repopulated from the form — so
+    // listing it here would silently strip ?visited= on every Apply. Leaving
+    // it out preserves the param; the active chip is how you clear it.
+    const sheetManagedNames = ['cuisine', 'location', 'price', 'vibes', 'minRating', 'sort'];
     for (const n of sheetManagedNames) url.searchParams.delete(n);
 
     const data = new FormData(form);
