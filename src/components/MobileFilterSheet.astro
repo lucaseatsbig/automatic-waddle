@@ -423,8 +423,11 @@ for (const slug of filters.vibes ?? []) {
 
   function initMobileFilterSheet() {
     const root = document.querySelector<HTMLDivElement>('[data-mfs-root]');
-    const trigger = document.querySelector<HTMLButtonElement>('[data-mfs-open]');
-    if (!root || !trigger) return;
+    // There are two triggers now — this sheet's own bar (mobile) and the
+    // Filters button in the desktop FilterBar. querySelector would bind only
+    // whichever comes first in the DOM and silently leave the other dead.
+    const triggers = document.querySelectorAll<HTMLButtonElement>('[data-mfs-open]');
+    if (!root || triggers.length === 0) return;
 
     const openSheet = () => {
       root.setAttribute('data-open', '');
@@ -436,7 +439,7 @@ for (const slug of filters.vibes ?? []) {
       root.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
     };
-    trigger.addEventListener('click', openSheet);
+    triggers.forEach((t) => t.addEventListener('click', openSheet));
     root.querySelectorAll<HTMLElement>('[data-mfs-close]').forEach((el) => {
       el.addEventListener('click', closeSheet);
     });
@@ -624,8 +627,27 @@ for (const slug of filters.vibes ?? []) {
 </script>
 
 <style>
-  /* Hidden by default; only mounted on mobile */
-  .mfs-bar, .mfs-root { display: none; }
+  /* The trigger bar is mobile-only — on desktop the Filters button in
+     FilterBar opens the same panel. The panel itself (.mfs-root) is now
+     mounted at every width; see the base rules just below. */
+  .mfs-bar { display: none; }
+
+  /* Overlay panel — shared by both triggers. Bottom sheet on mobile,
+     centred modal on desktop (see the min-width block further down). */
+  .mfs-root {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    align-items: flex-end;
+    visibility: hidden;
+    pointer-events: none;
+    transition: visibility 0.25s;
+  }
+  .mfs-root[data-open] {
+    visibility: visible;
+    pointer-events: auto;
+  }
 
   @media (max-width: 768px) {
     .mfs-bar {
@@ -782,20 +804,6 @@ for (const slug of filters.vibes ?? []) {
       font-weight: 600;
     }
 
-    .mfs-root {
-      display: flex;
-      position: fixed;
-      inset: 0;
-      z-index: 200;
-      align-items: flex-end;
-      visibility: hidden;
-      pointer-events: none;
-      transition: visibility 0.25s;
-    }
-    .mfs-root[data-open] {
-      visibility: visible;
-      pointer-events: auto;
-    }
   }
 
   /* Trigger — height matches the search input for visual alignment in row 1.
@@ -938,6 +946,38 @@ for (const slug of filters.vibes ?? []) {
     transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
   }
   .mfs-root[data-open] .mfs-sheet { transform: translateY(0); }
+
+  /* Desktop: the same panel, centred as a modal rather than a bottom sheet.
+     Everything inside it (groups, segments, chips, the Apply bar) is reused
+     as-is — only the container's placement and entrance change. 769px is the
+     complement of the 768px mobile breakpoint used throughout this file. */
+  @media (min-width: 769px) {
+    .mfs-root {
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .mfs-sheet {
+      width: min(560px, 100%);
+      max-height: min(76vh, 720px);
+      border-radius: 18px;
+      box-shadow: 0 18px 48px rgba(26, 40, 32, 0.28);
+      /* Rises a touch instead of sliding the full sheet height. */
+      transform: translateY(12px) scale(0.985);
+      opacity: 0;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+    .mfs-root[data-open] .mfs-sheet {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+    /* The drag affordance only means something on touch. */
+    .mfs-grabber { display: none; }
+  }
+  @media (min-width: 769px) and (prefers-reduced-motion: reduce) {
+    .mfs-sheet { transition: opacity 0.2s ease; transform: none; }
+    .mfs-root[data-open] .mfs-sheet { transform: none; }
+  }
 
   .mfs-grabber {
     width: 38px;

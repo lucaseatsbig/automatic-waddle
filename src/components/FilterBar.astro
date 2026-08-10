@@ -37,8 +37,10 @@ const {
 // into form state — every change goes through URL replaceState now.
 void view;
 
-const vibes = tags.filter((t) => t.category === 'vibe');
-const isOn = (arr: string[] | undefined, v: string) => (arr ?? []).includes(v);
+// Likewise these: the option lists they carry are rendered by the filter panel
+// (MobileFilterSheet) now that this bar is just search + sort + Filters. Kept
+// on the interface so /all can pass one identical prop set to both components.
+void regions; void tags; void cuisines; void available;
 
 const sort = filters.sort ?? 'name';
 const sortLabels: Record<string, string> = {
@@ -49,17 +51,6 @@ const sortLabels: Record<string, string> = {
 
 const topRated = filters.minRating != null && filters.minRating >= TOP_RATED_THRESHOLD;
 
-// Mirrors the canonical ranges in src/components/admin/RestaurantForm.astro
-// and UnifiedEntryForm.astro — keep these in sync with the admin entry form.
-// Only tiers someone is actually priced at get rendered.
-const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
-  { tier: 1, symbol: '$', range: '$0–20' },
-  { tier: 2, symbol: '$$', range: '$20–50' },
-  { tier: 3, symbol: '$$$', range: '$50–100' },
-  { tier: 4, symbol: '$$$$', range: '$100–200' },
-  { tier: 5, symbol: '$$$$$', range: '$200+' },
-].filter((p) => available.priceTiers.includes(p.tier));
-
 // There's deliberately no Status control any more — "Visited / On the list"
 // read as jargon, and wishlist places now sort below visited ones in every
 // sort, which is what people actually wanted from it. The `visited` URL param
@@ -67,36 +58,12 @@ const PRICE_TIERS: { tier: number; symbol: string; range: string }[] = [
 // keeps feeding anyFilterActive — that's what surfaces "Clear all" for anyone
 // who arrives on a filtered URL and wants out of it.
 
-// A cuisine/location pill with an empty panel is just a dead dropdown.
-const showCuisinePill = cuisines.length > 0;
-const showLocationPill = locations.length + regions.length > 0;
-
-// Cuisine and Location pills are multi-select. The pill's display label
-// shows "Any" / "Anywhere" when nothing's picked, the single value when
-// exactly one is picked, and "N selected" otherwise. Specific selections
-// always appear in the .active-row chip strip below for clarity.
+// Selections still drive the Filters badge count and the Applied chip strip,
+// even though the controls that set them now live in the panel.
 const selectedCuisines = filters.cuisines ?? [];
 const selectedRegionSlugs = filters.regions ?? [];
 const selectedSuburbSlugs = filters.locations ?? [];
 const totalLocations = selectedRegionSlugs.length + selectedSuburbSlugs.length;
-
-const cuisineLabel = (() => {
-  if (selectedCuisines.length === 0) return 'Any';
-  if (selectedCuisines.length === 1) return selectedCuisines[0];
-  return `${selectedCuisines.length} selected`;
-})();
-const locationLabel = (() => {
-  if (totalLocations === 0) return 'Anywhere';
-  if (totalLocations === 1) {
-    if (selectedRegionSlugs.length === 1) {
-      const slug = selectedRegionSlugs[0];
-      return REGIONS.find((r) => r.slug === slug)?.name ?? slug;
-    }
-    const slug = selectedSuburbSlugs[0];
-    return locations.find((l) => l.slug === slug)?.name ?? slug;
-  }
-  return `${totalLocations} selected`;
-})();
 
 // No longer rendered as a pill — kept only so anyFilterActive can offer
 // "Clear all" to anyone who lands on a ?visited= URL.
@@ -150,6 +117,18 @@ const anyFilterActive = !!(
 );
 const hasFilters = activeChips.length > 0;
 void TAG_CHIP_LIMIT;
+
+// Badge on the desktop "Filters" button. Counts the same things the sheet
+// counts (see MobileFilterSheet.astro) minus sort — sort has its own visible
+// pill out here, so folding it into the badge would double-count it.
+const filterCount =
+  selectedCuisines.length +
+  selectedRegionSlugs.length +
+  selectedSuburbSlugs.length +
+  (topRated ? 1 : 0) +
+  (visitedKey ? 1 : 0) +
+  (filters.price?.length ?? 0) +
+  (filters.vibes?.length ?? 0);
 ---
 <form class="filter-bar" method="get" action="/all">
   {/* Preserve the active view (map/list) when submitting filters — without
@@ -178,77 +157,22 @@ void TAG_CHIP_LIMIT;
           </svg>
         </button>
       </div>
-      {showCuisinePill && (
-      <div class="pill-select" data-name="cuisine" data-multi>
-        <button type="button" class:list={['pill', { on: selectedCuisines.length > 0 }]} data-pill-trigger>
-          <span class="meta">Cuisine</span>
-          <span class="label" data-pill-label>{cuisineLabel}</span>
-          <span class="caret" aria-hidden="true">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </span>
-        </button>
-        <div class="panel" hidden>
-          <button type="button" class="opt opt-clear" data-clear-this hidden={selectedCuisines.length === 0}>Clear all</button>
-          {cuisines.map((c) => (
-            <button
-              type="button"
-              class:list={['opt', 'opt-multi', { on: selectedCuisines.includes(c) }]}
-              data-multi-value={c}
-              role="checkbox"
-              aria-checked={selectedCuisines.includes(c) ? 'true' : 'false'}
-            >
-              <span class="opt-tick" aria-hidden="true">✓</span>
-              <span>{c}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      )}
+      {/* Cuisine, Location, Price, Vibe and Top rated all live in the filter
+          panel now (MobileFilterSheet, which is no longer mobile-only). This
+          row is deliberately just: search, sort, and one Filters button. */}
+      <button
+        type="button"
+        class:list={['pill', 'filters-btn', { on: filterCount > 0 }]}
+        data-mfs-open
+        aria-haspopup="dialog"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M2 4h12M4.5 8h7M6.5 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+        <span>Filters</span>
+        {filterCount > 0 && <span class="filters-count">{filterCount}</span>}
+      </button>
 
-      {showLocationPill && (
-      <div class="pill-select" data-name="location" data-multi>
-        <button type="button" class:list={['pill', { on: totalLocations > 0 }]} data-pill-trigger>
-          <span class="meta">Location</span>
-          <span class="label" data-pill-label>{locationLabel}</span>
-          <span class="caret" aria-hidden="true">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </span>
-        </button>
-        <div class="panel" hidden>
-          <button type="button" class="opt opt-clear" data-clear-this hidden={totalLocations === 0}>Clear all</button>
-          {regions.length > 0 && <div class="opt-group-label">Regions</div>}
-          {regions.map((r) => (
-            <button
-              type="button"
-              class:list={['opt', 'opt-multi', { on: selectedRegionSlugs.includes(r.slug) }]}
-              data-multi-value={`region:${r.slug}`}
-              role="checkbox"
-              aria-checked={selectedRegionSlugs.includes(r.slug) ? 'true' : 'false'}
-            >
-              <span class="opt-tick" aria-hidden="true">✓</span>
-              <span>{r.name}</span>
-            </button>
-          ))}
-          {locations.length > 0 && <div class="opt-group-label">Suburbs</div>}
-          {locations.map((l) => (
-            <button
-              type="button"
-              class:list={['opt', 'opt-multi', { on: selectedSuburbSlugs.includes(l.slug) }]}
-              data-multi-value={l.slug}
-              role="checkbox"
-              aria-checked={selectedSuburbSlugs.includes(l.slug) ? 'true' : 'false'}
-            >
-              <span class="opt-tick" aria-hidden="true">✓</span>
-              <span>{l.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      )}
 
       <div class="pill-select" data-name="sort">
         <input type="hidden" name="sort" value={sort === 'name' ? '' : sort} />
@@ -268,58 +192,7 @@ void TAG_CHIP_LIMIT;
         </div>
       </div>
 
-      {available.topRated && (
-      <div class="toggle-wrap">
-        <input type="hidden" name="minRating" value={topRated ? String(TOP_RATED_THRESHOLD) : ''} />
-        <button
-          type="button"
-          class:list={['pill', 'toggle', { on: topRated }]}
-          data-top-rated
-          aria-pressed={topRated ? 'true' : 'false'}
-        >
-          <span class="check" aria-hidden="true">{topRated ? '✓' : ''}</span>
-          Top rated ({TOP_RATED_THRESHOLD}+)
-        </button>
-      </div>
-      )}
     </div>
-
-    {/* Row 2: price chips */}
-    {PRICE_TIERS.length > 0 && (
-    <div class="chip-row">
-      <span class="row-label">Price</span>
-      {PRICE_TIERS.map((p) => (
-        <label class:list={['price-chip', { on: (filters.price ?? []).includes(p.tier) }]}>
-          <input
-            type="checkbox"
-            name="price"
-            value={p.tier}
-            checked={(filters.price ?? []).includes(p.tier)}
-          />
-          <span class="symbol">{p.symbol}</span>
-          <span class="range">{p.range}</span>
-        </label>
-      ))}
-    </div>
-    )}
-
-    {/* Row 3: vibe chips on their own row */}
-    {vibes.length > 0 && (
-      <div class="chip-row">
-        <span class="row-label">Vibe</span>
-        {vibes.map((t) => (
-          <label class:list={['vibe-chip', { on: isOn(filters.vibes, t.slug) }]}>
-            <input
-              type="checkbox"
-              name="vibes"
-              value={t.slug}
-              checked={isOn(filters.vibes, t.slug)}
-            />
-            {t.label}
-          </label>
-        ))}
-      </div>
-    )}
 
     {/* Active filters strip. Always rendered (display: none when no
         filters anywhere) so the client filter engine has a stable target.
@@ -748,6 +621,32 @@ void TAG_CHIP_LIMIT;
     min-height: 44px;
   }
   .pill:hover { border-color: var(--ink); }
+
+  /* Filters button — the single entry point to the panel. Inherits .pill so it
+     lines up with the Sort pill; the badge shows how many filters are on, and
+     the whole button flips to terracotta once any are. */
+  .filters-btn {
+    padding: 0.5rem 0.9rem;
+    font-weight: 600;
+  }
+  .filters-btn.on {
+    border-color: var(--terracotta);
+    color: var(--terracotta);
+  }
+  .filters-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    background: var(--terracotta);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+  }
   .pill .meta {
     font-size: 0.6875rem;
     font-weight: 600;
