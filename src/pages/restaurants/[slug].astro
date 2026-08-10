@@ -178,6 +178,9 @@ const seoImage = `/api/og/${restaurant.slug}.jpg`;
             <div class="rating-sub">
               {restaurant.visit_count === 1 ? '1 visit' : `across ${restaurant.visit_count} visits`}
             </div>
+            {/* Only on rated places — there's no score to explain on a wishlist
+                entry. Points at the "How I score" section on /about. */}
+            <a class="score-explainer" href="/about#how-i-score">What does this score mean?</a>
           </>
         ) : (
           <>
@@ -505,6 +508,24 @@ const seoImage = `/api/og/${restaurant.slug}.jpg`;
     color: var(--muted);
     font-size: 0.8125rem;
     margin-top: 0.3rem;
+  }
+  /* Deliberately quiet: muted, small, dotted underline. It should read as a
+     footnote to the rating, not compete with it — colour arrives on hover. */
+  .score-explainer {
+    display: inline-block;
+    margin-top: 0.55rem;
+    font-family: var(--sans);
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--rule-strong);
+    padding-bottom: 1px;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+  .score-explainer:hover,
+  .score-explainer:focus-visible {
+    color: var(--terracotta);
+    border-bottom-color: var(--terracotta);
   }
   .rating-card hr {
     border: none;

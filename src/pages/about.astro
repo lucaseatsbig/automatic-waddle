@@ -21,9 +21,9 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
       <div class="hero-text">
         <h1>Hi <span class="wave" aria-hidden="true">👋</span></h1>
         <p class="hero-sub">This site is the back-end of <a href="https://instagram.com/lucaseatsbig" target="_blank" rel="noopener noreferrer">@lucaseatsbig</a>.</p>
-        <p>I'm Lucas, I live in Sydney, and I think about food more than is healthy.</p>
-        <p>This site is a running record of every restaurant I've been to that I had an opinion about. It started as a Notion database that got too big, then a spreadsheet, and finally something I could send to friends without making them sign up for anything.</p>
-        <p>Every entry is mine. Every rating is honest. I pay for everything I eat. No comps, no PR dinners, no agenda. If something's on the wishlist it's because I want to go; if it's rated it's because I went.</p>
+        <p>I'm Lucas, I live in Sydney and I love trying new food.</p>
+        <p>This site is a running record of every restaurant I've been to and my thoughts. It started as a Notion database and became this website that I could share with friends.</p>
+        <p>Every entry and rating is my personal, honest opinion. If something's on the wishlist it's because I want to go; if it's rated it's because I went.</p>
       </div>
       <div class="phone" aria-hidden="true">
         <div class="phone-frame">
@@ -35,8 +35,11 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
     </div>
     <div class="prose">
 
-      <h2>How I score</h2>
-      <p>I rate every visit out of 10, in half-points. There's no formula. It's an overall feel for how good the meal was. Here's how it shows up on the cards:</p>
+      {/* Linked to from the rating card on every restaurant page ("What does
+          this score mean?"), so the id is load-bearing — don't rename it
+          without updating those links. */}
+      <h2 id="how-i-score">How I score</h2>
+      <p>I rate every visit out of 10, in half-points and the following guidelines. It's an overall feel for how good the meal was. Here's how it shows up on the cards:</p>
       <div class="score-tiers">
         <div class="tier-row">
           <div class="tier-pill">
@@ -45,7 +48,7 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
           </div>
           <div class="tier-body">
             <h3>Exceptional</h3>
-            <p>I'd recommend it to anyone, no caveats. Worth re-ordering your week for.</p>
+            <p>I'd consider it to be one of the best restaurants in its category. Would go back and recommend to anyone.</p>
           </div>
         </div>
         <div class="tier-row">
@@ -55,7 +58,7 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
           </div>
           <div class="tier-body">
             <h3>Really good</h3>
-            <p>Worth going out of your way for. The bar I want every meal to clear.</p>
+            <p>Definitely worth a visit. This means I walked out happy with the experience overall.</p>
           </div>
         </div>
         <div class="tier-row">
@@ -65,7 +68,7 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
           </div>
           <div class="tier-body">
             <h3>A mixed bag</h3>
-            <p>Fine, disappointing, or "I had to try it once". The number tells the story.</p>
+            <p>Likely had something that I didn't quite enjoy, maybe it was bad value or the food just was very average or poor.</p>
           </div>
         </div>
       </div>
@@ -268,6 +271,9 @@ const photosBase = env.PUBLIC_PHOTOS_URL ?? '';
     color: var(--ink);
     letter-spacing: -0.015em;
     margin: 2.5rem 0 1rem;
+    /* Breathing room above the heading when arriving via #how-i-score, so it
+       doesn't land flush against the top of the viewport. */
+    scroll-margin-top: 1.5rem;
   }
   /* Sub-heads under H2 sections — used for "Size rating", "Would return".
      Serif italic to match the editorial heading style, scaled down so they
