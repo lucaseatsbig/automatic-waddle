@@ -8,6 +8,11 @@ export const MODEL_OPUS = 'claude-opus-4-7';
 export const MODEL_SONNET = 'claude-sonnet-4-6';
 export const MODEL_HAIKU = 'claude-haiku-4-5';
 
+// Current-generation default for new scripts. The three above are left alone
+// so the existing guide generators keep the exact models they were tuned on —
+// swapping those is a separate, deliberate migration.
+export const MODEL_OPUS_5 = 'claude-opus-5';
+
 export function loadApiKey() {
   try {
     const raw = readFileSync('.dev.vars', 'utf8');
