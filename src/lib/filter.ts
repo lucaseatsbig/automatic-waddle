@@ -8,29 +8,12 @@
 
 import type { Filters, RestaurantCardData, SortOption } from './types';
 import { getRegion } from './regions';
+import { expandSearchToken } from './search-terms';
 
-/**
- * Naive plural/singular variant expansion so a search for "burgers" finds
- * "burger" and vice versa. Mirrors the server's expandPluralVariants in
- * db.ts — keep the two in sync.
- */
-export function expandPluralVariants(token: string): string[] {
-  const set = new Set<string>([token]);
-  const t = token;
-  if (t.length > 3 && t.endsWith('ies')) {
-    set.add(t.slice(0, -3) + 'y');
-  } else if (t.length > 3 && t.endsWith('es') && !t.endsWith('ses')) {
-    set.add(t.slice(0, -2));
-  }
-  if (t.length > 2 && t.endsWith('s') && !t.endsWith('ss') && !t.endsWith('us')) {
-    set.add(t.slice(0, -1));
-  }
-  if (t.length > 2 && !t.endsWith('s')) {
-    set.add(t + 's');
-    if (t.endsWith('y') && t.length > 2) set.add(t.slice(0, -1) + 'ies');
-  }
-  return Array.from(set);
-}
+// expandPluralVariants moved to ./search-terms so the server (db.ts) and this
+// client-side pass share one implementation instead of two copies that had to
+// be kept in sync by hand. Re-exported for anything still importing it here.
+export { expandPluralVariants } from './search-terms';
 
 /**
  * Extra fields the client needs that aren't on RestaurantCardData. Built
@@ -105,11 +88,13 @@ export function matchesFilter(r: FilterableRestaurant, f: Filters): boolean {
     }
   }
 
-  // Text search — token AND, plural-variant OR within each token.
+  // Text search — token AND, variant OR within each token. Variants cover
+  // plurals and related terms, so "seafood" also finds a place whose only
+  // clue is an oyster dish. See src/lib/search-terms.ts.
   if (f.q) {
     const tokens = f.q.toLowerCase().trim().split(/\s+/).filter((t) => t.length > 0);
     for (const tok of tokens) {
-      const variants = expandPluralVariants(tok);
+      const variants = expandSearchToken(tok);
       const anyHit = variants.some((v) => r.search_text.includes(v));
       if (!anyHit) return false;
     }

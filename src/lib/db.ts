@@ -14,6 +14,7 @@ import type {
   TagCategory,
 } from './types';
 import { getRegion } from './regions';
+import { expandSearchToken } from './search-terms';
 
 // Worker-lifetime memoization for read-mostly reference data used to populate
 // the FilterBar / MobileFilterSheet on every request. The underlying tables
@@ -179,31 +180,6 @@ export async function getOrCreateLocationByName(
   return Number(res.meta.last_row_id);
 }
 
-// Generate plural ↔ singular variants of a search token. English-only and
-// deliberately conservative — only handles the patterns that won't produce
-// false positives. Words ending in "ss" / "us" / very short words are skipped.
-function expandPluralVariants(token: string): string[] {
-  const set = new Set<string>([token]);
-  const t = token;
-  if (t.length > 3 && t.endsWith('ies')) {
-    // pastries → pastry, fries → fry
-    set.add(t.slice(0, -3) + 'y');
-  } else if (t.length > 3 && t.endsWith('es') && !t.endsWith('ses')) {
-    // dishes → dish, brunches → brunch (skip "ses" to avoid mangling "courses")
-    set.add(t.slice(0, -2));
-  }
-  if (t.length > 2 && t.endsWith('s') && !t.endsWith('ss') && !t.endsWith('us')) {
-    // burgers → burger, tacos → taco
-    set.add(t.slice(0, -1));
-  }
-  // Add a naive plural too so "burger" finds "burgers" in the data.
-  if (t.length > 2 && !t.endsWith('s')) {
-    set.add(t + 's');
-    if (t.endsWith('y') && t.length > 2) set.add(t.slice(0, -1) + 'ies');
-  }
-  return Array.from(set);
-}
-
 /**
  * Fetch every published restaurant with the extra fields the client-side
  * filter on /all needs (suburb slug, all meal_types reviewed, pre-built
@@ -315,12 +291,13 @@ export async function searchRestaurants(
 
   if (f.q) {
     // Tokenize the query and expand each token to its plural/singular variants
-    // so "burgers" finds "burger", "pastries" finds "pastry", "dishes" finds
-    // "dish", etc. Each token must match (AND across tokens), but any of its
-    // variants may match (OR within a token).
+    // plus any related terms — so "burgers" finds "burger" and "seafood" finds
+    // a place whose only clue is an oyster dish. Each token must match (AND
+    // across tokens), but any of its variants may match (OR within a token).
+    // Expansion lives in src/lib/search-terms.ts, shared with the client pass.
     const tokens = f.q.toLowerCase().trim().split(/\s+/).filter((t) => t.length > 0);
     for (const tok of tokens) {
-      const variants = expandPluralVariants(tok);
+      const variants = expandSearchToken(tok);
       const orClauses = variants.map(() => `(
         res.name LIKE ?
         OR res.cuisine LIKE ?
