@@ -15,6 +15,7 @@
     "db:import:notion": "node scripts/import-notion.mjs",
     "db:import:apply:local": "wrangler d1 execute lucaseats-db --local --file=scripts/notion-import.sql",
     "db:import:apply:remote": "wrangler d1 execute lucaseats-db --remote --file=scripts/notion-import.sql",
+    "og:generate": "node scripts/generate-og-image.mjs",
     "astro": "astro"
   },
   "dependencies": {

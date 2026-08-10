@@ -19,7 +19,11 @@ interface Props {
 }
 
 const DEFAULT_DESCRIPTION = 'A running list of Sydney spots Lucas has eaten at, ranked honestly. Filter by region, cuisine, vibe, or rating.';
-const DEFAULT_IMAGE = '/instagram-profile.png';
+// A 1200x630 screenshot of the home page, so a shared link previews as the site
+// itself. Regenerate with `npm run og:generate` (see scripts/generate-og-image.mjs)
+// when the home page changes — the counts in it are a point-in-time snapshot.
+const DEFAULT_IMAGE = '/og-home.png';
+const DEFAULT_IMAGE_ALT = 'The Lucas Eats Big home page — "This is everywhere I\'ve eaten and my honest thoughts."';
 
 const {
   title,
@@ -34,11 +38,13 @@ const {
 // so social-card scrapers (which don't run JS) get fully-qualified URLs.
 const siteUrl = Astro.site ?? new URL('https://lucaseatsbig.com');
 const canonical = new URL(Astro.url.pathname, siteUrl).toString();
+const usingDefaultImage = !image;
 const ogImageUrl = (() => {
   const raw = image ?? DEFAULT_IMAGE;
   if (raw.startsWith('http')) return raw;
   return new URL(raw, siteUrl).toString();
 })();
+const ogImageAlt = imageAlt ?? (usingDefaultImage ? DEFAULT_IMAGE_ALT : undefined);
 ---
 <title>{title}</title>
 <meta name="description" content={description} />
@@ -52,10 +58,21 @@ const ogImageUrl = (() => {
 <meta property="og:type" content={type} />
 <meta property="og:site_name" content="Lucas Eats Big" />
 <meta property="og:image" content={ogImageUrl} />
-{imageAlt && <meta property="og:image:alt" content={imageAlt} />}
+{ogImageAlt && <meta property="og:image:alt" content={ogImageAlt} />}
+{/* Dimensions let scrapers lay the card out before the image downloads, so the
+    preview renders large rather than as a thumbnail. Only safe for the default
+    card, whose size we control; per-page photos vary. */}
+{usingDefaultImage && (
+  <>
+    <meta property="og:image:width" content="2400" />
+    <meta property="og:image:height" content="1260" />
+    <meta property="og:image:type" content="image/png" />
+  </>
+)}
 
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content={title} />
 <meta name="twitter:description" content={description} />
 <meta name="twitter:image" content={ogImageUrl} />
+{ogImageAlt && <meta name="twitter:image:alt" content={ogImageAlt} />}
